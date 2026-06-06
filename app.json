@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "easyeco",
+    "slug": "easyeco",
+    "owner": "ingyinaye",
+    "scheme": [
+      "easyeco",
+      "fb1681691103048797"
+    ],
+
+    "android": {
+      "package": "com.easyeco.app"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
+  }
+}
