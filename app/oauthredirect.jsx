@@ -1,12 +1,6 @@
-import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { router } from 'expo-router';
 
 export default function OAuthRedirectScreen() {
-  useEffect(() => {
-    router.replace('/(main)');
-  }, []);
-
   return (
     <View
       style={{

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import axios from 'axios';
@@ -8,6 +9,7 @@ import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 
 import {
+  Image,
   View,
   Text,
   StatusBar,
@@ -188,7 +190,7 @@ export default function SignUpScreen() {
       try {
         const userInfoResponse =
           await axios.get(
-           `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
+            `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
           );
 
         console.log(
@@ -266,13 +268,13 @@ export default function SignUpScreen() {
     } catch (error) {
       console.log(
         error.response?.data ||
-          error.message
+        error.message
       );
 
       Alert.alert(
         'Error',
         error.response?.data?.message ||
-          'Signup failed'
+        'Signup failed'
       );
     } finally {
       setIsSubmitting(false);
@@ -303,199 +305,207 @@ export default function SignUpScreen() {
           keyboardDismissMode="on-drag"
           bounces={false}
         >
-            {/* HEADER */}
+          {/* HEADER */}
+          <View
+            style={[
+              styles.blueHeaderWrapper,
+              {
+                paddingTop: insets.top,
+                paddingBottom: 60,
+              },
+            ]}
+          >
+            <View style={styles.header}>
+              <View style={styles.profileCircle}>
+
+                <Image
+                  source={require('../../assets/Logoact2.png')}
+                  style={{
+                    width: 50,
+                    height: 50,
+                    resizeMode: 'contain',
+                  }}
+                />
+              </View>
+
+              <Text style={styles.title}>
+                Create Your Account
+              </Text>
+            </View>
+          </View>
+
+          {/* FORM */}
+          <View style={styles.form}>
+            <CustomInput
+              label="Username"
+              placeholder="Enter username"
+              value={username}
+              onChangeText={setUsername}
+            />
+
+            <CustomInput
+              label="Phone Number"
+              placeholder="Enter phone number"
+              value={phoneNumber}
+              onChangeText={
+                setPhoneNumber
+              }
+              keyboardType="phone-pad"
+            />
+
+            <CustomInput
+              label="Password"
+              placeholder="Enter password"
+              value={password}
+              onChangeText={setPassword}
+              secure
+            />
+
+            <CustomInput
+              label="Confirm Password"
+              placeholder="Confirm password"
+              value={confirmPassword}
+              onChangeText={
+                setConfirmPassword
+              }
+              secure
+            />
+
+            {/* CHECKBOX */}
+            <View
+              style={
+                styles.checkboxContainer
+              }
+            >
+              <TouchableOpacity
+                style={[
+                  styles.checkbox,
+                  isChecked &&
+                  styles.checkboxChecked,
+                ]}
+                onPress={() =>
+                  setIsChecked(
+                    !isChecked
+                  )
+                }
+              >
+                {isChecked && (
+                  <Text
+                    style={
+                      styles.checkmark
+                    }
+                  >
+                    ✓
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.label}>
+                I agree to the{' '}
+                <Text
+                  style={styles.linkText}
+                >
+                  Terms & Conditions
+                </Text>
+              </Text>
+            </View>
+
+            {/* SIGNUP BUTTON */}
             <View
               style={[
-                styles.blueHeaderWrapper,
+                styles.bottomFixed,
                 {
-                  paddingTop: insets.top,
-                  paddingBottom: 60,
+                  paddingBottom:
+                    Math.max(
+                      insets.bottom,
+                      15
+                    ),
                 },
               ]}
             >
-              <View style={styles.header}>
-                <View
-                  style={styles.profileCircle}
+              <View
+                style={{
+                  alignItems:
+                    'center',
+                }}
+              >
+                <CustomButton
+                  title={
+                    isSubmitting
+                      ? 'Signing Up...'
+                      : 'Sign Up'
+                  }
+                  onPress={
+                    handleSubmit
+                  }
+                  loading={isSubmitting}
                 />
-
-                <Text style={styles.title}>
-                  Create Your Account
-                </Text>
               </View>
-            </View>
 
-            {/* FORM */}
-            <View style={styles.form}>
-              <CustomInput
-                label="Username"
-                placeholder="Enter username"
-                value={username}
-                onChangeText={setUsername}
-              />
-
-              <CustomInput
-                label="Phone Number"
-                placeholder="Enter phone number"
-                value={phoneNumber}
-                onChangeText={
-                  setPhoneNumber
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    '/(auth)/login'
+                  )
                 }
-                keyboardType="phone-pad"
-              />
+              >
+                <Text
+                  style={
+                    styles.loginText
+                  }
+                >
+                  Already have an
+                  account?{' '}
+                  <Text
+                    style={{
+                      color: 'blue',
+                    }}
+                  >
+                    Sign in
+                  </Text>
+                </Text>
+              </TouchableOpacity>
 
-              <CustomInput
-                label="Password"
-                placeholder="Enter password"
-                value={password}
-                onChangeText={setPassword}
-                secure
-              />
+              <Text style={styles.or}>
+                Or
+              </Text>
 
-              <CustomInput
-                label="Confirm Password"
-                placeholder="Confirm password"
-                value={confirmPassword}
-                onChangeText={
-                  setConfirmPassword
-                }
-                secure
-              />
-
-              {/* CHECKBOX */}
+              {/* SOCIAL LOGIN */}
               <View
                 style={
-                  styles.checkboxContainer
+                  styles.socialRow
                 }
               >
-                <TouchableOpacity
-                  style={[
-                    styles.checkbox,
-                    isChecked &&
-                      styles.checkboxChecked,
-                  ]}
-                  onPress={() =>
-                    setIsChecked(
-                      !isChecked
-                    )
-                  }
-                >
-                  {isChecked && (
-                    <Text
-                      style={
-                        styles.checkmark
-                      }
-                    >
-                      ✓
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                <SocialButton
+                  title="Google"
+                  icon={require('../../assets/google1.png')}
+                  onPress={() => {
+                    console.log(
+                      'GOOGLE BUTTON PRESSED'
+                    );
 
-                <Text style={styles.label}>
-                  I agree to the{' '}
-                  <Text
-                    style={styles.linkText}
-                  >
-                    Terms & Conditions
-                  </Text>
-                </Text>
-              </View>
-
-              {/* SIGNUP BUTTON */}
-              <View
-                style={[
-                  styles.bottomFixed,
-                  {
-                    paddingBottom:
-                      Math.max(
-                        insets.bottom,
-                        15
-                      ),
-                  },
-                ]}
-              >
-                <View
-                  style={{
-                    alignItems:
-                      'center',
+                    if (googleRequest) {
+                      googlePromptAsync();
+                    }
                   }}
-                >
-                  <CustomButton
-                    title={
-                      isSubmitting
-                        ? 'Signing Up...'
-                        : 'Sign Up'
+                />
+
+                <SocialButton
+                  title="Facebook"
+                  icon={require('../../assets/facebook2.png')}
+                  onPress={() => {
+                    console.log(
+                      'FACEBOOK BUTTON PRESSED'
+                    );
+
+                    if (fbRequest) {
+                      fbPromptAsync();
                     }
-                    onPress={
-                      handleSubmit
-                    }
-                    loading={isSubmitting}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push(
-                      '/(auth)/login'
-                    )
-                  }
-                >
-                  <Text
-                    style={
-                      styles.loginText
-                    }
-                  >
-                    Already have an
-                    account?{' '}
-                    <Text
-                      style={{
-                        color: 'blue',
-                      }}
-                    >
-                      Sign in
-                    </Text>
-                  </Text>
-                </TouchableOpacity>
-
-                <Text style={styles.or}>
-                  Or
-                </Text>
-
-                {/* SOCIAL LOGIN */}
-                <View
-                  style={
-                    styles.socialRow
-                  }
-                >
-                  <SocialButton
-                    title="Google"
-                    icon={require('../../assets/google.png')}
-                    onPress={() => {
-                      console.log(
-                        'GOOGLE BUTTON PRESSED'
-                      );
-
-                      if (googleRequest) {
-                        googlePromptAsync();
-                      }
-                    }}
-                  />
-
-                  <SocialButton
-                    title="Facebook"
-                    icon={require('../../assets/facebook.png')}
-                    onPress={() => {
-                      console.log(
-                        'FACEBOOK BUTTON PRESSED'
-                      );
-
-                      if (fbRequest) {
-                        fbPromptAsync();
-                      }
-                    }}
-                  />
-                </View>
+                  }}
+                />
               </View>
             </View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -527,13 +537,16 @@ const styles = StyleSheet.create({
   },
 
   profileCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#fff',
-    marginTop: 20,
-    marginBottom: 10,
-  },
+  width: 80,
+  height: 80,
+  borderRadius: 200,
+  backgroundColor: '#fff',
+  marginTop: 20,
+  marginBottom: 10,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
 
   title: {
     color: '#fff',

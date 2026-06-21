@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  Image,
   SafeAreaView,
   View,
   Text,
@@ -16,71 +17,82 @@ export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   return (
 
-    <View style= {[ styles.mainWrapper,{
-        backgroundColor: '#3B3BFF',
-       }]
-      }>
-      <StatusBar barStyle="light-content" backgroundColor="#3B3BFF"  />
-    
+    <View style={[styles.mainWrapper, {
+      backgroundColor: '#ffffff',
+    }]
+    }>
+      <StatusBar barStyle="light-content" backgroundColor="#1658C3" />
 
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      
-      <View style={styles.circle}>
-        <Ionicons name="person-outline" size={58} color="#D9D9D9" />
+
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+
+        <View style={styles.circle}>
+          <Image
+            source={require('../../assets/Logoact2.png')}
+            style={styles.image}
+          />
+        </View>
+
+        <Text style={styles.title}>
+          <Text style={styles.easyText}>EASY </Text>
+          <Text style={styles.ecoText}>Eco</Text>
+        </Text>
+
+
+        <TouchableOpacity onPress={() => router.push("/(auth)/signup")} style={styles.button}>
+          <Text style={styles.buttonText}>Get Started</Text>
+
+        </TouchableOpacity>
+
+        <View style={styles.footIndicator}>
+          <Text style={styles.footerColor}>
+            Already have an account?
+          </Text>
+          <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
+            <Text style={styles.Login}>Log in</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.homeIndicator} />
       </View>
 
-      <Text style={styles.title}>Lorem ipsum</Text>
-
-      <View style={styles.line} />
-
-      <TouchableOpacity onPress={()=>router.push("/(auth)/signup")} style={styles.button}>
-        <Text style={styles.buttonText}>Get Started</Text>
-      </TouchableOpacity>
-
-    <View style={styles.footIndicator}>
-      <Text style={styles.footerColor}>
-      Already have an account?
-      </Text>
-      <TouchableOpacity onPress={()=>router.push("/(auth)/login")}>
-        <Text style={styles.Login}>Log in</Text>
-      </TouchableOpacity>
     </View>
 
-      <View style={styles.homeIndicator} />
-      </View>
-    
-    </View> 
- 
-   
+
   );
 }
 
 const styles = StyleSheet.create({
- mainWrapper:{
-  flex:1
- },
+  mainWrapper: {
+    flex: 1
+  },
   container: {
     flex: 1,
-    width:'100%',
+    width: '100%',
     //backgroundColor: '#001EFF',
     alignItems: 'center',
   },
 
   circle: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: '#FFFFFF',
-    marginTop: 170,
+    backgroundColor: '#001EFF',
+    width: 220,
+    height: 220,
+    marginTop: 180,
     justifyContent: 'center',
     alignItems: 'center',
+    hidden: 'overflow',
+  },
+
+  image: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
   },
 
   title: {
-    marginTop: 18,
-    fontSize: 21,
-    color: '#FFFFFF',
-    fontWeight: '500',
+    marginTop: -25,
+    fontSize: 32,
+    fontWeight: 'bold',
   },
 
   line: {
@@ -97,19 +109,19 @@ const styles = StyleSheet.create({
     width: 280,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1658C3',
     justifyContent: 'center',
     alignItems: 'center',
   },
 
   buttonText: {
     fontSize: 18,
-    color: '#202020',
+    color: '#ffffff',
     fontWeight: '500',
   },
 
-  footerColor:{
-    color:"#fff",
+  footerColor: {
+    color: "#1658C3",
   },
 
   footerText: {
@@ -120,7 +132,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
 
-  
+
 
   homeIndicator: {
     position: 'absolute',
@@ -131,16 +143,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
 
-  footIndicator:{
-    position:'absolute',
-    flexDirection:'row',
-    color:'#001EFF',
-     bottom: 74,
-    justifyContent:'center',
+  footIndicator: {
+    position: 'absolute',
+    flexDirection: 'row',
+    color: '#1658C3',
+    bottom: 74,
+    justifyContent: 'center',
     gap: 5
   },
 
-  Login:{
-    color:'#93959d'
-  }
+  Login: {
+    color: '#93959d'
+  },
+
+  image: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+
+  easyText: {
+    color: '#1658C3',
+    fontWeight: 'bold',
+  },
+
+  ecoText: {
+    color: '#22C55E',
+    fontWeight: 'bold',
+  },
 });

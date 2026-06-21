@@ -8,6 +8,7 @@ import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 
 import {
+  Image,
   View,
   Text,
   StatusBar,
@@ -19,6 +20,7 @@ import {
   Keyboard,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,6 +52,8 @@ export default function LoginScreen() {
 
   const [password, setPassword] =
     useState('');
+  const [isSocialLoginLoading, setIsSocialLoginLoading] =
+    useState(false);
 
   const [
     googleRequest,
@@ -58,7 +62,11 @@ export default function LoginScreen() {
   ] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    scopes: ['profile', 'email'],
     selectAccount: true,
+    extraParams: {
+      prompt: 'select_account',
+    },
   }, AUTH_REDIRECT_OPTIONS);
 
   const [
@@ -73,16 +81,17 @@ export default function LoginScreen() {
       display: 'touch',
     },
   });
+  const isSocialAuthRedirecting =
+    isSocialLoginLoading ||
+    googleResponse?.type === 'success' ||
+    fbResponse?.type === 'success';
 
   useEffect(() => {
-    console.log(
-      'GOOGLE RESPONSE =>',
-      googleResponse
-    );
-
     if (
       googleResponse?.type === 'success'
     ) {
+      setIsSocialLoginLoading(true);
+
       const { authentication } =
         googleResponse;
 
@@ -90,20 +99,26 @@ export default function LoginScreen() {
         authentication?.accessToken ||
         googleResponse.params?.access_token;
 
-      console.log(
-        'GOOGLE ACCESS TOKEN =>',
-        accessToken
-      );
-
       if (accessToken) {
-        router.replace('/(main)');
-        handleGoogleLogin(accessToken);
+        console.log('GOOGLE LOGIN SUCCESS');
+        handleGoogleLogin(accessToken).finally(() => {
+          router.replace('/(main)');
+        });
+      } else {
+        setIsSocialLoginLoading(false);
+
+        Alert.alert(
+          'Google Login Failed',
+          'No access token returned from Google'
+        );
       }
     }
 
     if (
       googleResponse?.type === 'error'
     ) {
+      setIsSocialLoginLoading(false);
+
       Alert.alert(
         'Google Login Failed'
       );
@@ -111,20 +126,12 @@ export default function LoginScreen() {
   }, [googleResponse]);
 
   useEffect(() => {
-    console.log(
-      'FACEBOOK RESPONSE =>',
-      fbResponse
-    );
-
     if (fbResponse?.type === 'success') {
+      setIsSocialLoginLoading(true);
+
       const accessToken =
         fbResponse.authentication?.accessToken ||
         fbResponse.params?.access_token;
-
-      console.log(
-        'FACEBOOK ACCESS TOKEN =>',
-        accessToken
-      );
 
       if (accessToken) {
         router.replace('/(main)');
@@ -133,6 +140,8 @@ export default function LoginScreen() {
     }
 
     if (fbResponse?.type === 'error') {
+      setIsSocialLoginLoading(false);
+
       Alert.alert(
         'Facebook Login Failed'
       );
@@ -155,13 +164,13 @@ export default function LoginScreen() {
     } catch (error) {
       console.log(
         error.response?.data ||
-          error.message
+        error.message
       );
 
       Alert.alert(
         'Error',
         error.response?.data?.message ||
-          'Login failed'
+        'Login failed'
       );
     }
   };
@@ -180,12 +189,24 @@ export default function LoginScreen() {
           }
         );
 
+      const googleUser = userInfoResponse.data;
+
       console.log(
         'GOOGLE USER =>',
-        userInfoResponse.data
+        `${googleUser.name} | ${googleUser.email} | ${googleUser.id}`
       );
     } catch (error) {
-      console.log(error);
+      console.log(
+        'GOOGLE USER INFO ERROR =>',
+        JSON.stringify(
+          error.response?.data || {
+            message: error.message,
+            status: error.response?.status,
+          },
+          null,
+          2
+        )
+      );
     }
   };
 
@@ -207,13 +228,54 @@ export default function LoginScreen() {
       }
     };
 
+  const handleGooglePress = async () => {
+    if (!googleRequest) {
+      return;
+    }
+
+    setIsSocialLoginLoading(true);
+    const result = await googlePromptAsync();
+
+    if (result?.type !== 'success') {
+      setIsSocialLoginLoading(false);
+    }
+  };
+
+  const handleFacebookPress = async () => {
+    if (!fbRequest) {
+      return;
+    }
+
+    setIsSocialLoginLoading(true);
+    const result = await fbPromptAsync();
+
+    if (result?.type !== 'success') {
+      setIsSocialLoginLoading(false);
+    }
+  };
+
+  if (isSocialAuthRedirecting) {
+    return (
+      <View style={styles.loadingScreen}>
+        <StatusBar
+          backgroundColor={HEADER_COLOR}
+          barStyle="light-content"
+        />
+        <ActivityIndicator
+          color={HEADER_COLOR}
+          size="large"
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar
         backgroundColor={HEADER_COLOR}
         barStyle="light-content"
       />
-<KeyboardAvoidingView
+      <KeyboardAvoidingView
         style={styles.container}
         behavior={
           Platform.OS === 'ios'
@@ -241,9 +303,18 @@ export default function LoginScreen() {
               ]}
             >
               <View style={styles.header}>
-                <View
-                  style={styles.profileCircle}
-                />
+                <View style={styles.header}>
+                  <View style={styles.profileCircle}>
+                    <Image
+                      source={require('../../assets/Logoact2.png')}
+                      style={{
+                        width: 50,
+                        height: 50,
+                        resizeMode: 'contain',
+                      }}
+                    />
+                  </View>
+                </View>
 
                 <Text style={styles.title}>
                   Welcome Back
@@ -310,30 +381,14 @@ export default function LoginScreen() {
               >
                 <SocialButton
                   title="Google"
-                  icon={require('../../assets/google.png')}
-                  onPress={() => {
-                    console.log(
-                      'GOOGLE BUTTON PRESSED'
-                    );
-
-                    if (googleRequest) {
-                      googlePromptAsync();
-                    }
-                  }}
+                  icon={require('../../assets/google1.png')}
+                  onPress={handleGooglePress}
                 />
 
                 <SocialButton
                   title="Facebook"
-                  icon={require('../../assets/facebook.png')}
-                  onPress={() => {
-                    console.log(
-                      'FACEBOOK BUTTON PRESSED'
-                    );
-
-                    if (fbRequest) {
-                      fbPromptAsync();
-                    }
-                  }}
+                  icon={require('../../assets/facebook2.png')}
+                  onPress={handleFacebookPress}
                 />
               </View>
             </View>
@@ -359,13 +414,15 @@ const styles = StyleSheet.create({
   },
 
   profileCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#fff',
-    marginBottom: 15,
-    marginTop: 50,
-  },
+  width: 80,
+  height: 80,
+  borderRadius: 200,
+  backgroundColor: '#fff',
+  marginTop: 20,
+  marginBottom: 10,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
 
   title: {
     fontSize: 28,
@@ -393,7 +450,7 @@ const styles = StyleSheet.create({
     color: '#3B3BFF',
     fontWeight: 'bold',
   },
- or: {
+  or: {
     textAlign: 'center',
     marginVertical: 12,
     color: '#aaa',
@@ -404,5 +461,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 15,
     marginTop: 5,
+  },
+
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
