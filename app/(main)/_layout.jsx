@@ -1,15 +1,23 @@
-import { Stack } from "expo-router";
-import { StatusBar } from "react-native";
-import { SafeAreaProvider , SafeAreaView } from "react-native-safe-area-context";
+import { Tabs } from 'expo-router';
+import { TabBar } from '../../components/TabBar'; 
 
-export default function AuthLayout() {
+
+export default function TabLayout() {
   return (
-    <SafeAreaProvider>
-       
-          <StatusBar style="light-content" backgroundColor="#3B3BFF" />
-          <Stack screenOptions={{ headerShown: false }} />
-       
-     
-    </SafeAreaProvider>
+    
+      <Tabs
+      
+      tabBar={(props) => <TabBar {...props} />}
+      screenOptions={{
+        headerShown: false, 
+      }}
+    >
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="analytics" />
+      <Tabs.Screen name="robot" />
+      <Tabs.Screen name="finance" />
+      <Tabs.Screen name="profile" />
+    </Tabs>
+    
   );
 }

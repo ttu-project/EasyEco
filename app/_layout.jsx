@@ -1,12 +1,17 @@
-import { Stack } from "expo-router";
-import { StatusBar } from "react-native";
-import { SafeAreaProvider , SafeAreaView } from "react-native-safe-area-context";
+// app/_layout.jsx
+import { Slot } from 'expo-router';
+import { UsageProvider } from './Usage/UsageContext'; // Path သေချာစစ်ပါ
+import { Children } from 'react';
+import { Stack } from 'expo-router';
 
-export default function AuthLayout() {
+export default function RootLayout() {
   return (
-    <SafeAreaProvider>      
-          <StatusBar style="light-content" backgroundColor="#3B3BFF" />
-          <Stack screenOptions={{ headerShown: false }} />
-    </SafeAreaProvider>
+    <UsageProvider>
+    <Stack screenOptions={{headerShown:false}}>
+        <Stack.Screen name="(main)" options={{ headerShown: false }} />
+        <Stack.Screen name="UsageDetail" options={{ presentation:'transparentModal',headerShown: false }} />
+      
+    </Stack>
+    </UsageProvider>
   );
 }
