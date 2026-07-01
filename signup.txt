@@ -1,0 +1,619 @@
+import React, { useState, useEffect } from 'react';
+import { router } from 'expo-router';
+import axios from 'axios';
+
+import * as Google from 'expo-auth-session/providers/google';
+import * as Facebook from 'expo-auth-session/providers/facebook';
+
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
+
+import {
+  View,
+  Text,
+  StatusBar,
+  StyleSheet,
+  Platform,
+  ScrollView,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  TouchableOpacity,
+  useWindowDimensions,
+  Alert,
+} from 'react-native';
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import CustomInput from '../../components/CustomInput';
+import CustomButton from '../../components/CustomButton';
+import SocialButton from '../../components/SocialButton';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const HEADER_COLOR = '#3B3BFF';
+
+export default function SignUpScreen() {
+  const insets = useSafeAreaInsets();
+  const { height: SCREEN_HEIGHT } =
+    useWindowDimensions();
+
+  const [isChecked, setIsChecked] =
+    useState(false);
+
+  const [username, setUsername] =
+    useState('');
+
+  const [phoneNumber, setPhoneNumber] =
+    useState('');
+
+  const [password, setPassword] =
+    useState('');
+
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState('');
+
+  const redirectUri =
+    AuthSession.makeRedirectUri({
+      scheme: 'easyeco',
+    });
+    
+    const [
+    googleRequest,
+    googleResponse,
+    googlePromptAsync,
+  ] = Google.useAuthRequest({
+
+     expoClientId:
+      '629463260650-4odboht1sor9gtu5gd46mab22t6vpot6.apps.googleusercontent.com',
+
+    androidClientId:
+      '629463260650-59op8temkkc39td44udva93fbli66j90.apps.googleusercontent.com',
+
+    redirectUri,
+  });
+
+
+  const [
+    fbRequest,
+    fbResponse,
+    fbPromptAsync,
+  ] = Facebook.useAuthRequest({
+    clientId: '1681691103048797',
+    redirectUri,
+  });
+
+  useEffect(() => {
+    console.log(
+      'GOOGLE RESPONSE =>',
+      googleResponse
+    );
+
+    if (
+      googleResponse?.type === 'success'
+    ) {
+      const { authentication } =
+        googleResponse;
+
+      const accessToken =
+        authentication?.accessToken;
+
+      console.log(
+        'GOOGLE ACCESS TOKEN =>',
+        accessToken
+      );
+
+      if (accessToken) {
+        handleGoogleLogin(accessToken);
+      }
+    }
+
+    if (
+      googleResponse?.type === 'error'
+    ) {
+      Alert.alert(
+        'Google Login Failed',
+        JSON.stringify(
+          googleResponse.error
+        )
+      );
+    }
+  }, [googleResponse]);
+
+  useEffect(() => {
+    console.log(
+      'FACEBOOK RESPONSE =>',
+      fbResponse
+    );
+
+    if (fbResponse?.type === 'success') {
+      const { authentication } =
+        fbResponse;
+
+      const accessToken =
+        authentication?.accessToken;
+
+      console.log(
+        'FACEBOOK ACCESS TOKEN =>',
+        accessToken
+      );
+
+      if (accessToken) {
+        handleFacebookLogin(
+          accessToken
+        );
+      }
+    }
+
+    if (fbResponse?.type === 'error') {
+      Alert.alert(
+        'Facebook Login Failed',
+        JSON.stringify(
+          fbResponse.error
+        )
+      );
+    }
+  }, [fbResponse]);
+
+  const handleGoogleLogin = async (
+    accessToken
+  ) => {
+    try {
+      const userInfoResponse =
+        await axios.get(
+          'https://www.googleapis.com/userinfo/v2/me',
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+      console.log(
+        'GOOGLE USER =>',
+        userInfoResponse.data
+      );
+
+      Alert.alert(
+        'Success',
+        'Google Login Successful'
+      );
+
+      router.replace('/(main)');
+    } catch (error) {
+      console.log(error);
+
+      Alert.alert(
+        'Error',
+        'Google Login Failed'
+      );
+    }
+  };
+
+  const handleFacebookLogin =
+    async (accessToken) => {
+      try {
+        const userInfoResponse =
+          await axios.get(
+           `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
+          );
+
+        console.log(
+          'FACEBOOK USER =>',
+          userInfoResponse.data
+        );
+
+        Alert.alert(
+          'Success',
+          'Facebook Login Successful'
+        );
+
+        router.replace('/(main)');
+      } catch (error) {
+        console.log(error);
+
+        Alert.alert(
+          'Error',
+          'Facebook Login Failed'
+        );
+      }
+    };
+
+  const handleSubmit = async () => {
+    try {
+      if (!username.trim()) {
+        return Alert.alert(
+          'Error',
+          'Please enter username'
+        );
+      }
+
+      if (!phoneNumber.trim()) {
+        return Alert.alert(
+          'Error',
+          'Please enter phone number'
+        );
+      }
+
+      if (password.length < 6) {
+        return Alert.alert(
+          'Error',
+          'Password must be at least 6 characters'
+        );
+      }
+
+      if (
+        confirmPassword !== password
+      ) {
+        return Alert.alert(
+          'Error',
+          'Passwords do not match'
+        );
+      }
+
+      if (!isChecked) {
+        return Alert.alert(
+          'Error',
+          'Please agree to Terms & Conditions'
+        );
+      }
+
+      const response = await axios.post(
+        'http://192.168.99.59:5000/api/users/register',
+        {
+          name: username,
+          phoneNumber,
+          password,
+        }
+      );
+
+      console.log(response.data);
+
+      Alert.alert(
+        'Success',
+        'Signup successful'
+      );
+
+      router.replace('/(main)');
+    } catch (error) {
+      console.log(
+        error.response?.data ||
+          error.message
+      );
+
+      Alert.alert(
+        'Error',
+        error.response?.data?.message ||
+          'Signup failed'
+      );
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar
+        backgroundColor={HEADER_COLOR}
+        barStyle="light-content"
+      />
+
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={
+          Platform.OS === 'ios'
+            ? 'padding'
+            : 'height'
+        }
+      >
+        <TouchableWithoutFeedback
+          onPress={Keyboard.dismiss}
+        >
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={
+              styles.scrollContent
+            }
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            {/* HEADER */}
+            <View
+              style={[
+                styles.blueHeaderWrapper,
+                {
+                  paddingTop: insets.top,
+                  paddingBottom: 60,
+                },
+              ]}
+            >
+              <View style={styles.header}>
+                <View
+                  style={styles.profileCircle}
+                />
+
+                <Text style={styles.title}>
+                  Create Your Account
+                </Text>
+              </View>
+            </View>
+
+            {/* FORM */}
+            <View style={styles.form}>
+              <CustomInput
+                label="Username"
+                placeholder="Enter username"
+                value={username}
+                onChangeText={setUsername}
+              />
+
+              <CustomInput
+                label="Phone Number"
+                placeholder="Enter phone number"
+                value={phoneNumber}
+                onChangeText={
+                  setPhoneNumber
+                }
+                keyboardType="phone-pad"
+              />
+
+              <CustomInput
+                label="Password"
+                placeholder="Enter password"
+                value={password}
+                onChangeText={setPassword}
+                secure
+              />
+
+              <CustomInput
+                label="Confirm Password"
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChangeText={
+                  setConfirmPassword
+                }
+                secure
+              />
+
+              {/* CHECKBOX */}
+              <View
+                style={
+                  styles.checkboxContainer
+                }
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.checkbox,
+                    isChecked &&
+                      styles.checkboxChecked,
+                  ]}
+                  onPress={() =>
+                    setIsChecked(
+                      !isChecked
+                    )
+                  }
+                >
+                  {isChecked && (
+                    <Text
+                      style={
+                        styles.checkmark
+                      }
+                    >
+                      ✓
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <Text style={styles.label}>
+                  I agree to the{' '}
+                  <Text
+                    style={styles.linkText}
+                  >
+                    Terms & Conditions
+                  </Text>
+                </Text>
+              </View>
+
+              {/* SIGNUP BUTTON */}
+              <View
+                style={[
+                  styles.bottomFixed,
+                  {
+                    paddingBottom:
+                      Math.max(
+                        insets.bottom,
+                        15
+                      ),
+                  },
+                ]}
+              >
+                <View
+                  style={{
+                    alignItems:
+                      'center',
+                  }}
+                >
+                  <CustomButton
+                    title="Sign Up"
+                    onPress={
+                      handleSubmit
+                    }
+                  />
+                </View>
+
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push(
+                      '/(auth)/login'
+                    )
+                  }
+                >
+                  <Text
+                    style={
+                      styles.loginText
+                    }
+                  >
+                    Already have an
+                    account?{' '}
+                    <Text
+                      style={{
+                        color: 'blue',
+                      }}
+                    >
+                      Sign in
+                    </Text>
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.or}>
+                  Or
+                </Text>
+
+                {/* SOCIAL LOGIN */}
+                <View
+                  style={
+                    styles.socialRow
+                  }
+                >
+                  <SocialButton
+                    title="Facebook"
+                    icon={require('../../assets/facebook.png')}
+                    onPress={() => {
+                      console.log(
+                        'FACEBOOK BUTTON PRESSED'
+                      );
+
+                      fbPromptAsync();
+                    }}
+                  />
+
+                  <SocialButton
+                    title="Google"
+                    icon={require('../../assets/google.png')}
+                    onPress={() => {
+                      console.log(
+                        'GOOGLE BUTTON PRESSED'
+                      );
+
+                      googlePromptAsync();
+                    }}
+                  />
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: '#fff',
+  },
+
+  blueHeaderWrapper: {
+    backgroundColor: HEADER_COLOR,
+  },
+
+  header: {
+    paddingHorizontal: 25,
+  },
+
+  profileCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#fff',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+
+  title: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+
+  form: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 35,
+    borderTopRightRadius: 35,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    marginTop: -35,
+    minHeight: 600,
+  },
+
+  bottomFixed: {
+    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+  },
+
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginTop: 5,
+    marginLeft: 25,
+  },
+
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 2,
+    borderColor: HEADER_COLOR,
+    borderRadius: 6,
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  checkboxChecked: {
+    backgroundColor: HEADER_COLOR,
+  },
+
+  checkmark: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+
+  label: {
+    color: '#666',
+  },
+
+  linkText: {
+    color: HEADER_COLOR,
+    fontWeight: 'bold',
+  },
+
+  loginText: {
+    textAlign: 'center',
+    marginTop: 10,
+  },
+
+  or: {
+    textAlign: 'center',
+    marginVertical: 8,
+    color: '#aaa',
+  },
+
+  socialRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 15,
+    marginTop: 2,
+  },
+});

@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "easyeco",
+    "slug": "easyeco",
+    "scheme": [
+      "easyeco",
+      "fb1681691103048797"
+    ],
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "android": {
+      "package": "com.anonymous.easyeco"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "51d9fe16-7bf2-4927-896e-208c2f8a4244"
+      }
+    }
+  }
+}
