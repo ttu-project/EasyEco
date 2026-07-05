@@ -1,12 +1,20 @@
-// app/(tabs)/index.tsx
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Image, Dimensions, SafeAreaView, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { Image, Dimensions, SafeAreaView, ScrollView } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive constants
+const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // 60 = 20 padding on sides + 20 gap between cards
+const CARD_HEIGHT = SCREEN_HEIGHT * 0.21;
+
+const scale = SCREEN_HEIGHT / 800;
+const s = (size) => size * scale;
+
 
 const ICON_MAP = {
   fridge: require('../../assets/Refigerator.png'),
@@ -83,6 +91,7 @@ export default function Index() {
   const { getUsage } = useUsage();
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
+
   const [currentUnits, setCurrentUnits] = useState(0);
   const [currentCost, setCurrentCost] = useState(0);
   const [estimatedUnits, setEstimatedUnits] = useState(0);
@@ -218,56 +227,50 @@ const parseTimeToHours = (timeStr) => {
     setEstimatedCost(estimatedCost);
   };
 
+
+  
+  // ... [Keep your state variables and calculateBill logic] ...
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView 
+     edges={['top', 'bottom', 'left', 'right']}
+    style={styles.container}>
       <View style={styles.mainContent}>
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Image 
-              source={require('../../assets/Logoact2.png')} 
-              style={{ width: 60, height: 60, resizeMode: 'contain' }} 
-            />
-          </View>
-          <View style={styles.notiCircle}>
-            <Image 
-              source={require('../../assets/Notifications.png')} 
-              style={{ width: 30, height: 30, resizeMode: 'contain' }} 
-            />
-          </View>
+          <Image source={require('../../assets/Logoact2.png')} style={styles.logo} />
+          <TouchableOpacity onPress={() => router.push({ pathname: '../Usage/Notification'} )}>
+          <Image source={require('../../assets/Notifications.png')} style={styles.notiIcon} />
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.mainTitle}>Estimated Monthly Bill</Text>
 
-       <TouchableOpacity
-       activeOpacity={0.9}
-  onPress={() => router.push({
-    pathname: '../UsageDetail',
-    params: { type: 'current' }
-  })}>
-         <View style={styles.billCard}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, { flex: 1.2 }]}></Text>
-            <Text style={styles.tableHeaderText}>Energy Usage</Text>
-            <Text style={styles.tableHeaderText}>Electricity Bill</Text>
+        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push({ pathname: '../UsageDetail', params: { type: 'current' } })}>
+          <View style={styles.billCard}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, { flex: 1.2 }]}></Text>
+              <Text style={styles.tableHeaderText}>Energy Usage</Text>
+              <Text style={styles.tableHeaderText}>Electricity Bill</Text>
+            </View>
+            <View style={styles.tableRow}>
+              <Text style={[styles.rowLabel, { flex: 1.2 }]}>Current Usage :</Text>
+              <Text style={styles.rowValue}>{currentUnits} units</Text>
+              <Text style={styles.rowValue}>{currentCost.toLocaleString()}MMK</Text>
+            </View>
+            <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
+              <Text style={[styles.rowLabel, { flex: 1.2 }]}>Estimated Total :</Text>
+              <Text style={styles.rowValue}>{estimatedUnits} units</Text>
+              <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
+            </View>
           </View>
-          <View style={styles.tableRow}>
-            <Text style={[styles.rowLabel, { flex: 1.2 }]}>Current Usage :</Text>
-            <Text style={styles.rowValue}>{currentUnits}  units</Text>
-            <Text style={styles.rowValue}>{currentCost.toLocaleString()}MMK</Text>
-          </View>
-          <View style={[styles.tableRow, { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
-            <Text style={[styles.rowLabel, { flex: 1.2 }]}>Estimated Total :</Text>
-            <Text style={styles.rowValue}>{estimatedUnits} units</Text>
-            <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
-          </View>
-        </View>
+        </TouchableOpacity>
 
-       </TouchableOpacity>
         <Text style={styles.sectionTitle}>Track Duration and Wattage</Text>
 
         <View style={styles.swiperWrapper}>
           <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
             ref={scrollViewRef}
             horizontal
             pagingEnabled
@@ -279,23 +282,12 @@ const parseTimeToHours = (timeStr) => {
               <View key={pageIndex} style={styles.pageContainer}>
                 <View style={styles.gridContainer}>
                   {pageItems.map((item) => (
-                    <TouchableOpacity 
-                      key={item.id}
-                      activeOpacity={0.8}
-                      onPress={() => handleCardPress(item)}
-                      style={styles.applianceCard}
-                    >
-                      <View style={styles.cardTop}>
-                        <View style={styles.iconCircle}>
-                          {renderFigmaIcon(item.iconType)}
-                        </View>
-                        <Text style={styles.cardTitle} numberOfLines={1}>
-                          {item.title}
-                        </Text>
+                    <TouchableOpacity key={item.id} style={styles.applianceCard} onPress={() => handleCardPress(item)}>
+                      <View>
+                        <View style={styles.iconCircle}>{renderFigmaIcon(item.iconType)}</View>
+                        <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
                         <View style={styles.underline} />
                       </View>
-
-                      {/* ===== DYNAMIC CONTENT ===== */}
                       {renderCardContent(item)}
                     </TouchableOpacity>
                   ))}
@@ -307,76 +299,70 @@ const parseTimeToHours = (timeStr) => {
 
         <View style={styles.paginationContainer}>
           {PAGES_DATA.map((_, index) => (
-            <TouchableOpacity
-              key={index}
-              activeOpacity={0.8}
-              onPress={() => handleDotPress(index)}
-              style={[styles.dot, activePage === index ? styles.activeDot : styles.inactiveDot]}
-            />
+            <View key={index} style={[styles.dot, activePage === index ? styles.activeDot : styles.inactiveDot]} />
           ))}
         </View>
 
-        <View style={styles.buttonWrapper}>
-          <TouchableOpacity activeOpacity={0.8} style={styles.calculateButton}  onPress={calculateBill}>
-            <Text style={styles.buttonText}>Calculate Bill</Text>
-            {/* {renderCardContent(item)} */}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.calculateButton} onPress={calculateBill}>
+          <Text style={styles.buttonText}>Calculate Bill</Text>
+        </TouchableOpacity>
       </View>
-      <View style={styles.bottomBarPlaceholder} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  mainContent: { flex: 1, paddingHorizontal: 20, paddingTop: 35 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  logoContainer: {  width:60,height:60,borderRadius: 3, borderWidth: 2, borderColor: '#ffffff', justifyContent: 'center', alignItems: 'center' },
-  notiCircle: {  backgroundColor: '#FFFFFF', borderRadius: 19, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#ffffff' },
-  mainTitle: { fontSize: 25, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 15},
-  billCard: { backgroundColor: '#2167E1', borderRadius: 18, padding: 16, marginBottom: 15 },
-  tableHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  tableHeaderText: { flex: 1, color: 'rgba(255,255,255,0.85)', fontSize: 12, textAlign: 'right' },
-  tableRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.25)', paddingBottom: 10, marginBottom: 10 },
-  rowLabel: { color: '#FFF', fontSize: 14, fontWeight: '500' },
-  rowValue: { flex: 1, color: '#FFF', fontSize: 14, fontWeight: '600', textAlign: 'right' },
-  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 14 },
-  swiperWrapper: { height: 330, width: SCREEN_WIDTH - 40 },
+  mainContent: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 10 },
+  logo: { width: 50, height: 50, resizeMode: 'contain' },
+  notiIcon: { width: 30, height: 30, resizeMode: 'contain' },
+  mainTitle: { fontSize: 20, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 9 },
+  billCard: { backgroundColor: '#2167E1', borderRadius: 12, padding: 10, marginBottom: 10 },
+  tableHeader: { flexDirection: 'row', marginBottom: 4 },
+  tableHeaderText: { flex: 1, color: 'rgba(255,255,255,0.7)', fontSize: 9, textAlign: 'right' },
+  tableRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)', paddingBottom: 4, marginBottom: 4 },
+  rowLabel: { color: '#FFF', fontSize: 13 },
+  rowValue: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '700', textAlign: 'right' },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 10 },
+  swiperWrapper: { width: '100%'}, 
   pageContainer: { width: SCREEN_WIDTH - 40 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  applianceCard: { width: '48%', height: 150, backgroundColor: '#3B7AEE', borderRadius: 16, padding: 12, marginBottom: 16, justifyContent: 'space-between' },
-  cardTop: { width: '100%' },
-  iconCircle: { width: 40, height: 40, backgroundColor: '#FFFFFF', borderRadius: 19, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: '#FFF', marginBottom: 4 },
-  underline: { height: 1, backgroundColor: 'rgba(255,255,255,0.35)', width: '100%', marginBottom: 8 },
-  
-  // ===== STYLES FOR USAGE DISPLAY =====
-  specsContainer: { width: '100%' },
-  specRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  specText: { fontSize: 11, color: '#FFF' },
-  moreText: { 
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'},
+  applianceCard: { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: '#3B7AEE', borderRadius: 16, padding: 12, marginBottom: 15 },
+  iconCircle: { width: 26, height: 26, backgroundColor: '#FFF', borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
+  cardTitle: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  underline: { height: 1, backgroundColor: 'rgba(255,255,255,0.3)', marginVertical: 8 },
+  paginationContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 10 },
+  dot: { height: 4, borderRadius: 3, marginHorizontal: 4 },
+  activeDot: { width: 24, backgroundColor: '#A2B9E3' },
+  inactiveDot: { width: 10, backgroundColor: '#D4E0F7' },
+  calculateButton: { backgroundColor: '#1958CE', borderRadius: 14, paddingVertical: 12, alignItems: 'center', alignSelf: 'center', width: '55%' },
+  specsContainer: { 
+    width: '100%',
+    marginTop: 5,
+  },
+  specRow: { 
+    flexDirection: 'row',      // Change this to row
+    justifyContent: 'flex-start',
+    marginBottom: 2, 
+    gap: 8                 // Adds space between Watt and Time
+  },
+  specText: { 
+    fontSize: 12, 
+    color: '#FFF',
+    fontWeight: '500'
+  },
+   moreText: { 
     fontSize: 14, 
     color: 'rgba(255,255,255,0.9)', 
     textAlign: 'center',
-    marginTop: 2,
     fontWeight: 'bold'
   },
-  
-  // ===== STYLE FOR "ADD USAGE DETAILS" =====
-  addActionText: { 
+   addActionText: { 
     fontSize: 12, 
     color: 'rgba(255,255,255,0.8)', 
     textAlign: 'center', 
     paddingVertical: 4 
   },
-  
-  paginationContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginVertical: 15 },
-  dot: { height: 6, borderRadius: 3, marginHorizontal: 4 },
-  activeDot: { width: 26, backgroundColor: '#A2B9E3' },
-  inactiveDot: { width: 10, backgroundColor: '#D4E0F7' },
-  buttonWrapper: { alignItems: 'center', justifyContent: 'center', width: '100%' },
-  calculateButton: { backgroundColor: '#1958CE', borderRadius: 14, paddingVertical: 12, alignItems: 'center', width: '56%', marginBottom: 10 },
-  buttonText: { color: '#FFF', fontSize: 18, fontWeight: '600' },
-  bottomBarPlaceholder: { height: 80, backgroundColor: '#FFF' },
+  buttonText: { color: '#FFF', fontSize: 16, fontWeight: '600' }
 });

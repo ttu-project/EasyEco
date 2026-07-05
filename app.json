@@ -8,10 +8,17 @@
       "fb1681691103048797"
     ],
     "plugins": [
-      "expo-web-browser"
-    ],
+  "expo-web-browser",         
+  [                          
+    "expo-image-picker",      
+    {                        
+      "photosPermission": "The app accesses your photos to let you share them with your chat."
+    }
+  ]                          
+],
     "android": {
-      "package": "com.anonymous.easyeco"
+      "package": "com.anonymous.easyeco",
+      "softwareKeyboardLayoutMode": "resize"
     }
   }
 }

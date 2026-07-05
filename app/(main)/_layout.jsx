@@ -14,7 +14,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="analytics" />
-      <Tabs.Screen name="robot" />
+      <Tabs.Screen name="robot" options={{tabBarStyle:{display:'none'}}} />
       <Tabs.Screen name="finance" />
       <Tabs.Screen name="profile" />
     </Tabs>
