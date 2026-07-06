@@ -91,7 +91,6 @@ export default function Index() {
   const { getUsage } = useUsage();
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
-
   const [currentUnits, setCurrentUnits] = useState(0);
   const [currentCost, setCurrentCost] = useState(0);
   const [estimatedUnits, setEstimatedUnits] = useState(0);

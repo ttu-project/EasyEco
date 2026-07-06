@@ -42,7 +42,11 @@ const UsageTrackerComponent = ({ category, data }) => {
 
   const [showPicker, setShowPicker] = useState(false);
   const [activeItemName, setActiveItemName] = useState('');
-  const [date, setDate] = useState(new Date(0, 0, 0, 0, 0));
+  const [date, setDate] = useState(() => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+});
   const [selectedTimes, setSelectedTimes] = useState({});
   const [customWatt, setCustomWatt] = useState('');
   const [currentUsage, setCurrentUsage] = useState(() => getUsage(category));

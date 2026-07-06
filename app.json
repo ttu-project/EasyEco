@@ -2,23 +2,20 @@
   "expo": {
     "name": "easyeco",
     "slug": "easyeco",
-    "owner": "ingyinaye",
     "scheme": [
       "easyeco",
       "fb1681691103048797"
     ],
     "plugins": [
-  "expo-web-browser",         
-  [                          
-    "expo-image-picker",      
-    {                        
-      "photosPermission": "The app accesses your photos to let you share them with your chat."
-    }
-  ]                          
-],
+      "expo-web-browser"
+    ],
     "android": {
-      "package": "com.anonymous.easyeco",
-      "softwareKeyboardLayoutMode": "resize"
+      "package": "com.anonymous.easyeco"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "51d9fe16-7bf2-4927-896e-208c2f8a4244"
+      }
     }
   }
 }
