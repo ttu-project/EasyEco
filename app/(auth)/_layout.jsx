@@ -6,7 +6,9 @@ export default function AuthLayout() {
   return (
     <SafeAreaProvider>     
       <StatusBar style="light-content" backgroundColor="#ffffff" />
-      <Stack screenOptions={{ headerShown: false }} />
-    </SafeAreaProvider>
+      <Stack screenOptions={{ headerShown: false }} >
+  <Stack.Screen name="welcome" />
+  </Stack>
+  </SafeAreaProvider>
   );
 }
