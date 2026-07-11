@@ -4,17 +4,28 @@
     "slug": "easyeco",
     "scheme": [
       "easyeco",
+      "com.anonymous.easyeco",
       "fb1681691103048797"
     ],
+    "icon": "./assets/Logoact2.png",
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
     "android": {
-      "package": "com.anonymous.easyeco"
+      "package": "com.anonymous.easyeco",
+      "usesCleartextTraffic": true,
+      "googleServicesFile": "./android/app/google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/Logoact2.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
     "extra": {
       "eas": {
-        "projectId": "51d9fe16-7bf2-4927-896e-208c2f8a4244"
+        "projectId": "6c1baa2b-95cf-4fd4-a3ff-d9ac4b777bf3"
       }
     }
   }

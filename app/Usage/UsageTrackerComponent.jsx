@@ -1,15 +1,29 @@
 import { StyleSheet, Text, View } from 'react-native'
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
  TouchableOpacity, FlatList, 
   TextInput, SafeAreaView, Alert 
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUsage } from './UsageContext';
-import { router } from 'expo-router';
+
+const createDurationDate = (hours = 0, minutes = 0) => {
+  const nextDate = new Date();
+  nextDate.setHours(hours, minutes, 0, 0);
+  return nextDate;
+};
+
+const parseDurationTime = (time = '') => {
+  const hrMatch = time.match(/(\d+)\s*hr/);
+  const minMatch = time.match(/(\d+)\s*min/);
+  return {
+    hours: hrMatch ? parseInt(hrMatch[1], 10) : 0,
+    minutes: minMatch ? parseInt(minMatch[1], 10) : 0,
+  };
+};
 
 const UsageTrackerComponent = ({ category, data }) => {
   const router = useRouter();
@@ -21,8 +35,7 @@ const UsageTrackerComponent = ({ category, data }) => {
     return <Text>Data မရှိပါ</Text>;
   }
 
-  const { addUsage, removeUsage, getUsage } = usageContext || {};
-  console.log("🚀 Context ထဲက Functions များ:", { addUsage, removeUsage, getUsage });
+  const { addUsage, removeUsage, getUsage, usageData } = usageContext || {};
  
     
       
@@ -40,16 +53,22 @@ const UsageTrackerComponent = ({ category, data }) => {
       const [showPicker, setShowPicker] = useState(false);
       
       const [activeItemName, setActiveItemName] = useState('');
-      const [date, setDate] = useState(new Date(0, 0, 0, 0, 0));
+      const [date, setDate] = useState(() => createDurationDate());
       const [selectedTimes, setSelectedTimes] = useState({}); 
       const [customWatt, setCustomWatt] = useState('');
     
       const handleOpenPicker = (name) => {
+        const selectedTime = parseDurationTime(selectedTimes[name]);
         setActiveItemName(name);
+        setDate(createDurationDate(selectedTime.hours, selectedTime.minutes));
         setShowPicker(true);
       };
       const [currentUsage, setCurrentUsage] = useState(() => getUsage(category));
-      const submitToUsage = (item) => {
+      useEffect(() => {
+        setCurrentUsage(getUsage(category));
+      }, [category, usageData]);
+
+      const submitToUsage = async (item) => {
         if (!selectedTimes[item.name]) {
           Alert.alert("Please select time");
           return;
@@ -65,16 +84,13 @@ const UsageTrackerComponent = ({ category, data }) => {
           time: timeDisplay,
         };
     
-        addUsage(category, newItem);
-        
-         setCurrentUsage(prev => [...prev, newItem]);
+        await addUsage(category, newItem);
         
         if (item.name === 'Custom') setCustomWatt('');
       };
     
       const handleDelete = (itemId) => {
         removeUsage(category, itemId);
-        setCurrentUsage(prev => prev.filter(i => i.id !== itemId));
       };
     
       return (
@@ -161,9 +177,9 @@ const UsageTrackerComponent = ({ category, data }) => {
               onChange={(event, selectedDate) => {
                 setShowPicker(false);
                 if (event.type === 'set' && selectedDate) {
-                  setDate(selectedDate);
                   const hours = selectedDate.getHours();
                   const minutes = selectedDate.getMinutes();
+                  setDate(createDurationDate(hours, minutes));
                   setSelectedTimes(prev => ({
                     ...prev,
                     [activeItemName]: `${hours} hr ${minutes.toString().padStart(2, '0')} min`

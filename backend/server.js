@@ -20,8 +20,14 @@ app.use('/api/users', require('./routes/userRoutes'));
 const productRoutes = require('./routes/productRoutes');
 app.use('/api/products', productRoutes);
 
+const usageRoutes = require('./routes/usageRoutes');
+app.use('/api/usage', usageRoutes);
+
 const apiRoutes = require('./routes/apiRoutes');
 app.use('/api', apiRoutes);
+
+const aiRoutes = require('./routes/aiRoutes');
+app.use('/api/ai', aiRoutes);
 
 const PORT = process.env.PORT || 5000;
 

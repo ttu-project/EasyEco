@@ -122,8 +122,6 @@ export default function UsageTracker() {
   const { category } = useLocalSearchParams();
   
   const categoryData = APPLIANCE_DATA[category];
-  console.log("URL မှလာသော category:", category);
-  console.log("APPLIANCE_DATA Keys:", Object.keys(APPLIANCE_DATA));
 
   if(!categoryData){
     return <Text>There is no data{category}</Text>

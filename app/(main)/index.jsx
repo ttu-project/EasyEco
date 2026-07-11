@@ -1,10 +1,11 @@
 // app/(tabs)/index.tsx
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Image, Dimensions, SafeAreaView, ScrollView } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
+import { summarizeUsageBill } from '../utils/billing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -57,30 +58,9 @@ const PAGES_DATA = [
   ]
 ];
 
-const RATES = [
-  { limit: 50,   rate: 50 },   // 1-50 units @ 50 MMK
-  { limit: 50,   rate: 100 },  // 51-100 units @ 100 MMK
-  { limit: 100,  rate: 150 },  // 101-200 units @ 150 MMK
-  { limit: Infinity, rate: 300 }, // 201+ units @ 300 MMK
-];
-
-const calculateMeterBill = (totalUnits) => {
-  let remaining = totalUnits;
-  let totalCost = 0;
-
-  for (const tier of RATES) {
-    if (remaining <= 0) break;
-    const unitsInTier = Math.min(remaining, tier.limit);
-    totalCost += unitsInTier * tier.rate;
-    remaining -= unitsInTier;
-  }
-
-  return { units: totalUnits, cost: totalCost };
-};
-
 export default function Index() {
   const router = useRouter();
-  const { getUsage } = useUsage();
+  const { getUsage, usageData, fetchUsage } = useUsage();
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
   const [currentUnits, setCurrentUnits] = useState(0);
@@ -109,28 +89,6 @@ export default function Index() {
       setActivePage(currentIndex);
     }
   };
-
-  // ===== HELPERS FOR BILL CALCULATION =====
-
-// Extract number from "75W" or "75 Watt"
-const parseWatt = (wattStr) => {
-  const match = wattStr.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 0;
-};
-
-// Convert "2 hr 30 min" → hours (2.5)
-const parseTimeToHours = (timeStr) => {
-  const hrMatch = timeStr.match(/(\d+)\s*hr/);
-  const minMatch = timeStr.match(/(\d+)\s*min/);
-  const hours = hrMatch ? parseInt(hrMatch[1], 10) : 0;
-  const minutes = minMatch ? parseInt(minMatch[1], 10) : 0;
-  return hours + (minutes / 60);
-};
-
-// Myanmar Tiered Rates
-
-
-
 
   const renderFigmaIcon = (type) => {
     const iconSource = ICON_MAP[type];
@@ -185,38 +143,29 @@ const parseTimeToHours = (timeStr) => {
   };
 
   const calculateBill = () => {
-    let dailyUnits = 0;      // Current Usage (no ×30)
-    let monthlyUnits = 0;    // Estimated Total (×30)
+    const summary = summarizeUsageBill(getUsage);
 
-    PAGES_DATA.forEach((page) => {
-      page.forEach((item) => {
-        const specs = getUsage(item.categoryId);
-        
-        if (specs && specs.length > 0) {
-          specs.forEach((spec) => {
-            const watt = parseWatt(spec.watt);
-            const hoursPerDay = parseTimeToHours(spec.time);
-            
-            const daily = (watt * hoursPerDay) / 1000;
-            const monthly = daily * 30;
-             dailyUnits += daily;
-            monthlyUnits += monthly;
-          });
-        }
-      });
-    });
-
-    const current = Math.round(dailyUnits);
-    const estimated = Math.round(monthlyUnits);
-    
-    const { cost: currentCost } = calculateMeterBill(current);
-    const { cost: estimatedCost } = calculateMeterBill(estimated);
-
-    setCurrentUnits(current);
-    setCurrentCost(currentCost);
-    setEstimatedUnits(estimated);
-    setEstimatedCost(estimatedCost);
+    setCurrentUnits(summary.totalDailyUnits);
+    setCurrentCost(summary.totalDailyCost);
+    setEstimatedUnits(summary.totalMonthlyUnits);
+    setEstimatedCost(summary.totalMonthlyCost);
   };
+
+  const handleCalculateBillPress = () => {
+    calculateBill();
+    router.push({
+      pathname: '../UsageDetail',
+      params: { type: 'estimated' },
+    });
+  };
+
+  useEffect(() => {
+    fetchUsage();
+  }, []);
+
+  useEffect(() => {
+    calculateBill();
+  }, [usageData]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -229,12 +178,16 @@ const parseTimeToHours = (timeStr) => {
               style={{ width: 60, height: 60, resizeMode: 'contain' }} 
             />
           </View>
-          <View style={styles.notiCircle}>
+          <TouchableOpacity
+            style={styles.notiCircle}
+            activeOpacity={0.8}
+            onPress={() => router.push('../Usage/Notification')}
+          >
             <Image 
               source={require('../../assets/Notifications.png')} 
               style={{ width: 30, height: 30, resizeMode: 'contain' }} 
             />
-          </View>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.mainTitle}>Estimated Monthly Bill</Text>
@@ -317,7 +270,7 @@ const parseTimeToHours = (timeStr) => {
         </View>
 
         <View style={styles.buttonWrapper}>
-          <TouchableOpacity activeOpacity={0.8} style={styles.calculateButton}  onPress={calculateBill}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.calculateButton} onPress={handleCalculateBillPress}>
             <Text style={styles.buttonText}>Calculate Bill</Text>
             {/* {renderCardContent(item)} */}
           </TouchableOpacity>

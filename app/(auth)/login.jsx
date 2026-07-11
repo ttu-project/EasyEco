@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import axios from 'axios';
+import { saveSession } from '../utils/authStorage';
 
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
@@ -38,10 +39,10 @@ import { API_BASE_URL } from '../../config/api';
 WebBrowser.maybeCompleteAuthSession();
 
 const HEADER_COLOR = '#3B3BFF';
-const APP_SCHEME = 'easyeco';
+const GOOGLE_REDIRECT_URI = 'com.anonymous.easyeco:/oauthredirect';
 const FACEBOOK_REDIRECT_URI = `fb${FACEBOOK_APP_ID}://authorize`;
 const AUTH_REDIRECT_OPTIONS = {
-  scheme: APP_SCHEME,
+  scheme: 'easyeco',
 };
 
 export default function LoginScreen() {
@@ -52,6 +53,8 @@ export default function LoginScreen() {
 
   const [password, setPassword] =
     useState('');
+  const [isLoggingIn, setIsLoggingIn] =
+    useState(false);
   const [isSocialLoginLoading, setIsSocialLoginLoading] =
     useState(false);
 
@@ -62,6 +65,7 @@ export default function LoginScreen() {
   ] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    redirectUri: GOOGLE_REDIRECT_URI,
     scopes: ['profile', 'email'],
     selectAccount: true,
     extraParams: {
@@ -100,17 +104,7 @@ export default function LoginScreen() {
         googleResponse.params?.access_token;
 
       if (accessToken) {
-        console.log('GOOGLE LOGIN SUCCESS');
-        handleGoogleLogin(accessToken).finally(() => {
-          router.replace('/(main)');
-        });
-      } else {
-        setIsSocialLoginLoading(false);
-
-        Alert.alert(
-          'Google Login Failed',
-          'No access token returned from Google'
-        );
+        handleGoogleLogin(accessToken);
       }
     }
 
@@ -134,7 +128,6 @@ export default function LoginScreen() {
         fbResponse.params?.access_token;
 
       if (accessToken) {
-        router.replace('/(main)');
         handleFacebookLogin(accessToken);
       }
     }
@@ -150,6 +143,26 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     try {
+      if (isLoggingIn) {
+        return;
+      }
+
+      if (!phoneNumber.trim()) {
+        return Alert.alert(
+          'Error',
+          'Please enter phone number'
+        );
+      }
+
+      if (!password.trim()) {
+        return Alert.alert(
+          'Error',
+          'Please enter password'
+        );
+      }
+
+      setIsLoggingIn(true);
+
       const response = await axios.post(
         `${API_BASE_URL}/users/login`,
         {
@@ -158,20 +171,17 @@ export default function LoginScreen() {
         }
       );
 
-      console.log(response.data);
-
+      await saveSession(response.data);
       router.replace('/(main)');
     } catch (error) {
-      console.log(
-        error.response?.data ||
-        error.message
-      );
-
       Alert.alert(
         'Error',
         error.response?.data?.message ||
+        error.message ||
         'Login failed'
       );
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -191,22 +201,19 @@ export default function LoginScreen() {
 
       const googleUser = userInfoResponse.data;
 
-      console.log(
-        'GOOGLE USER =>',
-        `${googleUser.name} | ${googleUser.email} | ${googleUser.id}`
-      );
+      await saveSession({
+        _id: googleUser.id,
+        name: googleUser.name,
+        email: googleUser.email,
+        token: accessToken,
+        provider: 'google',
+      });
+
+      router.replace('/(main)');
     } catch (error) {
-      console.log(
-        'GOOGLE USER INFO ERROR =>',
-        JSON.stringify(
-          error.response?.data || {
-            message: error.message,
-            status: error.response?.status,
-          },
-          null,
-          2
-        )
-      );
+      Alert.alert('Google Login Failed');
+    } finally {
+      setIsSocialLoginLoading(false);
     }
   };
 
@@ -218,13 +225,20 @@ export default function LoginScreen() {
             `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
           );
 
-        console.log(
-          'FACEBOOK USER =>',
-          userInfoResponse.data
-        );
+        await saveSession({
+          _id: userInfoResponse.data.id,
+          name: userInfoResponse.data.name,
+          email: userInfoResponse.data.email,
+          picture: userInfoResponse.data.picture,
+          token: accessToken,
+          provider: 'facebook',
+        });
 
+        router.replace('/(main)');
       } catch (error) {
-        console.log(error);
+        Alert.alert('Facebook Login Failed');
+      } finally {
+        setIsSocialLoginLoading(false);
       }
     };
 
@@ -348,8 +362,13 @@ export default function LoginScreen() {
                 }}
               >
                 <CustomButton
-                  title="Login"
+                  title={
+                    isLoggingIn
+                      ? 'Logging In...'
+                      : 'Login'
+                  }
                   onPress={handleLogin}
+                  loading={isLoggingIn}
                 />
               </View>
 

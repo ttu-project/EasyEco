@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import axios from 'axios';
-
+import { saveSession } from '../utils/authStorage';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 
@@ -36,10 +36,10 @@ import { API_BASE_URL } from '../../config/api';
 WebBrowser.maybeCompleteAuthSession();
 
 const HEADER_COLOR = '#3B3BFF';
-const APP_SCHEME = 'easyeco';
+const GOOGLE_REDIRECT_URI = 'com.anonymous.easyeco:/oauthredirect';
 const FACEBOOK_REDIRECT_URI = `fb${FACEBOOK_APP_ID}://authorize`;
 const AUTH_REDIRECT_OPTIONS = {
-  scheme: APP_SCHEME,
+  scheme: 'easyeco',
 };
 
 export default function SignUpScreen() {
@@ -71,6 +71,7 @@ export default function SignUpScreen() {
   ] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    redirectUri: GOOGLE_REDIRECT_URI,
     selectAccount: true,
   }, AUTH_REDIRECT_OPTIONS);
 
@@ -89,11 +90,6 @@ export default function SignUpScreen() {
   });
 
   useEffect(() => {
-    console.log(
-      'GOOGLE RESPONSE =>',
-      googleResponse
-    );
-
     if (
       googleResponse?.type === 'success'
     ) {
@@ -104,13 +100,7 @@ export default function SignUpScreen() {
         authentication?.accessToken ||
         googleResponse.params?.access_token;
 
-      console.log(
-        'GOOGLE ACCESS TOKEN =>',
-        accessToken
-      );
-
       if (accessToken) {
-        router.replace('/(main)');
         handleGoogleLogin(accessToken);
       }
     }
@@ -128,11 +118,6 @@ export default function SignUpScreen() {
   }, [googleResponse]);
 
   useEffect(() => {
-    console.log(
-      'FACEBOOK RESPONSE =>',
-      fbResponse
-    );
-
     if (fbResponse?.type === 'success') {
       const { authentication } =
         fbResponse;
@@ -141,13 +126,7 @@ export default function SignUpScreen() {
         authentication?.accessToken ||
         fbResponse.params?.access_token;
 
-      console.log(
-        'FACEBOOK ACCESS TOKEN =>',
-        accessToken
-      );
-
       if (accessToken) {
-        router.replace('/(main)');
         handleFacebookLogin(accessToken);
       }
     }
@@ -176,12 +155,17 @@ export default function SignUpScreen() {
           }
         );
 
-      console.log(
-        'GOOGLE USER =>',
-        userInfoResponse.data
-      );
+      await saveSession({
+        _id: userInfoResponse.data.id,
+        name: userInfoResponse.data.name,
+        email: userInfoResponse.data.email,
+        token: accessToken,
+        provider: 'google',
+      });
+
+      router.replace('/(main)');
     } catch (error) {
-      console.log(error);
+      Alert.alert('Google Login Failed');
     }
   };
 
@@ -193,20 +177,23 @@ export default function SignUpScreen() {
             `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
           );
 
-        console.log(
-          'FACEBOOK USER =>',
-          userInfoResponse.data
-        );
+        await saveSession({
+          _id: userInfoResponse.data.id,
+          name: userInfoResponse.data.name,
+          email: userInfoResponse.data.email,
+          picture: userInfoResponse.data.picture,
+          token: accessToken,
+          provider: 'facebook',
+        });
 
+        router.replace('/(main)');
       } catch (error) {
-        console.log(error);
+        Alert.alert('Facebook Login Failed');
       }
     };
 
   const handleSubmit = async () => {
     try {
-      console.log('SIGNUP BUTTON PRESSED');
-
       if (isSubmitting) {
         return;
       }
@@ -251,7 +238,7 @@ export default function SignUpScreen() {
       setIsSubmitting(true);
 
       const response = await axios.post(
-        `${API_BASE_URL}/api/users/register`,
+        `${API_BASE_URL}/users/register`,
         {
           name: username,
           phoneNumber,
@@ -262,18 +249,13 @@ export default function SignUpScreen() {
         }
       );
 
-      console.log(response.data);
-
+      await saveSession(response.data);
       router.replace('/(main)');
     } catch (error) {
-      console.log(
-        error.response?.data ||
-        error.message
-      );
-
       Alert.alert(
         'Error',
         error.response?.data?.message ||
+        error.message ||
         'Signup failed'
       );
     } finally {
@@ -480,10 +462,6 @@ export default function SignUpScreen() {
                   title="Google"
                   icon={require('../../assets/google1.png')}
                   onPress={() => {
-                    console.log(
-                      'GOOGLE BUTTON PRESSED'
-                    );
-
                     if (googleRequest) {
                       googlePromptAsync();
                     }
@@ -494,10 +472,6 @@ export default function SignUpScreen() {
                   title="Facebook"
                   icon={require('../../assets/facebook2.png')}
                   onPress={() => {
-                    console.log(
-                      'FACEBOOK BUTTON PRESSED'
-                    );
-
                     if (fbRequest) {
                       fbPromptAsync();
                     }

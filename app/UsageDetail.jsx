@@ -5,39 +5,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
 import { useUsage } from './Usage/UsageContext';
-
-// ===== HELPERS =====
-
-const parseWatt = (wattStr) => {
-  const match = wattStr.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 0;
-};
-
-const parseTimeToHours = (timeStr) => {
-  const hrMatch = timeStr.match(/(\d+)\s*hr/);
-  const minMatch = timeStr.match(/(\d+)\s*min/);
-  const hours = hrMatch ? parseInt(hrMatch[1], 10) : 0;
-  const minutes = minMatch ? parseInt(minMatch[1], 10) : 0;
-  return hours + (minutes / 60);
-};
-
-const calculateMeterBill = (totalUnits) => {
-  let remaining = totalUnits;
-  let totalCost = 0;
-  const rates = [
-    { limit: 50, rate: 50 },
-    { limit: 50, rate: 100 },
-    { limit: 100, rate: 150 },
-    { limit: Infinity, rate: 300 },
-  ];
-  for (const tier of rates) {
-    if (remaining <= 0) break;
-    const unitsInTier = Math.min(remaining, tier.limit);
-    totalCost += unitsInTier * tier.rate;
-    remaining -= unitsInTier;
-  }
-  return totalCost;
-};
+import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
 
 // ===== COMPONENT =====
 
@@ -45,40 +13,13 @@ export default function UsageDetail() {
   const router = useRouter();
   const { type } = useLocalSearchParams();
   const { getUsage } = useUsage();
-
-  const allItems = [];
-  const categories = [
-    'refrigerator', 'ac', 'washing', 'bulb',
-    'fan', 'tv', 'iron', 'microwave',
-    'rice', 'pot', 'kettle', 'vacuum'
-  ];
-
-  categories.forEach((cat) => {
-    const specs = getUsage(cat);
-    if (specs && specs.length > 0) {
-      specs.forEach((spec) => {
-        const watt = parseWatt(spec.watt);
-        const hours = parseTimeToHours(spec.time);
-        const dailyUnits = (watt * hours) / 1000;
-        const monthlyUnits = dailyUnits * 30;
-
-        allItems.push({
-          id: spec.id,
-          name: spec.name,
-          watt: spec.watt,
-          dailyUnits: dailyUnits,
-          monthlyUnits: monthlyUnits,
-          dailyCost: calculateMeterBill(Math.round(dailyUnits)),
-          monthlyCost: calculateMeterBill(Math.round(monthlyUnits)),
-        });
-      });
-    }
-  });
-
-  const totalDailyUnits = allItems.reduce((sum, item) => sum + item.dailyUnits, 0);
-  const totalMonthlyUnits = allItems.reduce((sum, item) => sum + item.monthlyUnits, 0);
-  const totalDailyCost = allItems.reduce((sum, item) => sum + item.dailyCost, 0);
-  const totalMonthlyCost = allItems.reduce((sum, item) => sum + item.monthlyCost, 0);
+  const {
+    allItems,
+    totalDailyUnits,
+    totalMonthlyUnits,
+    totalDailyCost,
+    totalMonthlyCost,
+  } = summarizeUsageBill(getUsage);
 
   const isCurrent = type === 'current';
   const displayItems = allItems.map(item => ({
@@ -118,8 +59,8 @@ export default function UsageDetail() {
             {displayItems.map((item) => (
               <View key={item.id} style={styles.tableRow}>
                 <Text style={[styles.deviceCell, { flex: 1.5 }]}>{item.name}({item.watt})</Text>
-                <Text style={[styles.unitCell, { flex: 1 }]}>{item.units.toFixed(0)} units</Text>
-                <Text style={[styles.costCell, { flex: 1 }]}>{item.cost.toLocaleString()} MMK</Text>
+                <Text style={[styles.unitCell, { flex: 1 }]}>{formatUnits(item.units)} units</Text>
+                <Text style={[styles.costCell, { flex: 1 }]}>{formatCost(item.cost)} MMK</Text>
               </View>
             ))}
           </ScrollView>
@@ -129,14 +70,14 @@ export default function UsageDetail() {
           {/* Summary */}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Current Usage :</Text>
-            <Text style={styles.summaryUnits}>{totalDailyUnits.toFixed(0)} units</Text>
-            <Text style={styles.summaryCost}>{totalDailyCost.toLocaleString()} MMK</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} units</Text>
+            <Text style={styles.summaryCost}>{formatCost(totalDailyCost)} MMK</Text>
           </View>
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Estimated Total :</Text>
-            <Text style={styles.summaryUnits}>{totalMonthlyUnits.toFixed(0)} units</Text>
-            <Text style={styles.summaryCost}>{totalMonthlyCost.toLocaleString()} MMK</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} units</Text>
+            <Text style={styles.summaryCost}>{formatCost(totalMonthlyCost)} MMK</Text>
           </View>
         </View>
       </View>
