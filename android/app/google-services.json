@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "967113612740",
+    "project_id": "easyeco-b58f0",
+    "storage_bucket": "easyeco-b58f0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:967113612740:android:d960fa3922aaa69380d891",
+        "android_client_info": {
+          "package_name": "com.anonymous.easyeco"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPuMfThdipheAf1yVnXCEdgepaCaTaBpk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
