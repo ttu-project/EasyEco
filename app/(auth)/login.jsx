@@ -6,6 +6,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 
 import * as WebBrowser from 'expo-web-browser';
+import { useAuth } from '../context/AuthContext';
 
 import {
   Image,
@@ -46,6 +47,8 @@ const AUTH_REDIRECT_OPTIONS = {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
+  const { signIn } = useAuth();
+  console.log('API_BASE_URL=', API_BASE_URL);
 
   const [phoneNumber, setPhoneNumber] =
     useState('');
@@ -159,6 +162,11 @@ export default function LoginScreen() {
       );
 
       console.log(response.data);
+      
+       const token = response.data.token;
+      if (token) {
+        await signIn(token);
+      }
 
       router.replace('/(main)');
     } catch (error) {

@@ -67,9 +67,9 @@ const PAGES_DATA = [
 
 const RATES = [
   { limit: 50,   rate: 50 },   // 1-50 units @ 50 MMK
-  { limit: 50,   rate: 100 },  // 51-100 units @ 100 MMK
-  { limit: 100,  rate: 150 },  // 101-200 units @ 150 MMK
-  { limit: Infinity, rate: 300 }, // 201+ units @ 300 MMK
+  { limit: 50,   rate: 150 },  // 51-100 units @ 100 MMK
+  { limit: 100,  rate: 300 },  // 101-200 units @ 150 MMK
+  { limit: Infinity, rate: 350 }, // 201+ units @ 300 MMK
 ];
 
 const calculateMeterBill = (totalUnits) => {
@@ -214,8 +214,8 @@ const parseTimeToHours = (timeStr) => {
       });
     });
 
-    const current = Math.round(dailyUnits);
-    const estimated = Math.round(monthlyUnits);
+    const current = parseFloat(dailyUnits.toFixed(2));
+    const estimated = parseFloat(monthlyUnits.toFixed(2));
     
     const { cost: currentCost } = calculateMeterBill(current);
     const { cost: estimatedCost } = calculateMeterBill(estimated);

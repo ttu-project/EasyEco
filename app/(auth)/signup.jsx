@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import axios from 'axios';
+import { TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { useAuth } from '../context/AuthContext';
 
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
@@ -11,13 +13,11 @@ import * as WebBrowser from 'expo-web-browser';
 import {
   Image,
   View,
-  Text,
   StatusBar,
   StyleSheet,
   Platform,
   ScrollView,
   KeyboardAvoidingView,
-  TouchableOpacity,
   Alert,
 } from 'react-native';
 
@@ -44,6 +44,7 @@ const AUTH_REDIRECT_OPTIONS = {
 
 export default function SignUpScreen() {
   const insets = useSafeAreaInsets();
+  const { signIn } = useAuth();
 
   const [isChecked, setIsChecked] =
     useState(false);
@@ -251,7 +252,7 @@ export default function SignUpScreen() {
       setIsSubmitting(true);
 
       const response = await axios.post(
-        `${API_BASE_URL}/api/users/register`,
+        `${API_BASE_URL}/users/register`,
         {
           name: username,
           phoneNumber,
@@ -264,6 +265,11 @@ export default function SignUpScreen() {
 
       console.log(response.data);
 
+      const token = response.data.token;
+    console.log('TOKEN FROM BACKEND:', token);
+       if (token) {
+      await signIn(token);
+    }
       router.replace('/(main)');
     } catch (error) {
       console.log(

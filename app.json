@@ -7,10 +7,12 @@
       "fb1681691103048797"
     ],
     "plugins": [
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "android": {
-      "package": "com.anonymous.easyeco"
+      "package": "com.anonymous.easyeco",
+      "usesCleartextTraffic": true
     },
     "extra": {
       "eas": {

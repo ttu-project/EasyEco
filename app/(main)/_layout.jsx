@@ -1,8 +1,20 @@
 import { Tabs } from 'expo-router';
 import { TabBar } from '../../components/TabBar'; 
-
+import { useAuth } from '../context/AuthContext';
+import { Stack, Redirect } from 'expo-router';
 
 export default function TabLayout() {
+  const { isRestoring, isAuthenticated } = useAuth();
+
+  if (isRestoring) {
+    // show a splash / loading UI while token restores
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    // protect main routes
+    return <Redirect href="/(auth)/welcome" />;
+  }
   return (
     
       <Tabs
