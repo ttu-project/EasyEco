@@ -21,7 +21,7 @@ export default function WelcomeScreen() {
       backgroundColor: '#ffffff',
     }]
     }>
-      <StatusBar barStyle="light-content" backgroundColor="#1658C3" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
 
       <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>

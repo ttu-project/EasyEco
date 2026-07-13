@@ -289,9 +289,7 @@ export default function NotificationPage() {
   );
 }
 
-// ============================================================
-// 🎨 STYLES - Matching the screenshot exactly
-// ============================================================
+
 
 const styles = StyleSheet.create({
   container: {

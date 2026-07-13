@@ -349,6 +349,15 @@ export default function LoginScreen() {
                 secure
               />
 
+              <TouchableOpacity
+  onPress={() => router.push('/forgot-password')}
+  style={styles.forgotPasswordContainer}
+>
+  <Text style={styles.forgotPasswordText}>
+    Forgot Password?
+  </Text>
+</TouchableOpacity>
+
               <View
                 style={{
                   alignItems: 'center',
@@ -477,4 +486,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  forgotPasswordContainer: {
+  alignSelf: 'flex-end',  
+  marginTop: -4,
+  marginBottom: 4,
+   marginRight: 32,
+},
+forgotPasswordText: {
+  color: '#3B3BFF',  // Match your app's accent color
+  fontSize: 11,
+  fontWeight: '500',
+},
 });
