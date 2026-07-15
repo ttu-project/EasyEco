@@ -27,6 +27,8 @@ export function AuthProvider({ children }) {
     restore();
   }, []);
 
+  
+
   const signIn = async (newToken) => {
     try {
       await SecureStore.setItemAsync(TOKEN_KEY, newToken, {
@@ -40,16 +42,17 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const signOut = async () => {
-    try {
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-    } catch (e) {
-      console.warn('Failed to delete token', e);
-    } finally {
-      setToken(null);
-      delete axios.defaults.headers.common.Authorization;
-    }
-  };
+ const signOut = async () => {
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch (e) {
+    console.warn('Failed to delete token', e);
+    // Error is caught here, NOT re-thrown
+  } finally {
+    setToken(null);
+    delete axios.defaults.headers.common.Authorization;
+  }
+};
 
   return (
     <AuthContext.Provider

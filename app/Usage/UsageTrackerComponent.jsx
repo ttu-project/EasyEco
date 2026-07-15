@@ -47,7 +47,7 @@ const UsageTrackerComponent = ({ category, data }) => {
   d.setHours(0, 0, 0, 0);
   return d;
 });
-  const [selectedTimes, setSelectedTimes] = useState({});
+  const [selectedTimes, setSelectedTimes] = useState({ hr: 0, min: 0 });
   const [customWatt, setCustomWatt] = useState('');
   const [currentUsage, setCurrentUsage] = useState(() => getUsage(category));
 
@@ -74,6 +74,11 @@ const UsageTrackerComponent = ({ category, data }) => {
 
     addUsage(category, newItem);
     setCurrentUsage(prev => [...prev, newItem]);
+
+    setSelectedTimes(prev => ({
+    ...prev,
+    [item.name]: null 
+  }));
 
     if (item.name === 'Custom') setCustomWatt('');
   };

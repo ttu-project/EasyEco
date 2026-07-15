@@ -3,7 +3,6 @@ import React, { createContext, useContext, useState } from 'react';
 const UsageContext = createContext();
 
 export function UsageProvider({ children }) {
-   console.log("UsageProvider အလုပ်လုပ်နေပါပြီ!"); // ဒီ log ကို Terminal မှာ မြင်ရရမယ်
   const [usageData, setUsageData] = useState({});
 
   // Add usage for a category
@@ -27,8 +26,12 @@ export function UsageProvider({ children }) {
     return usageData[category] || [];
   };
 
+   const clearAllUsage = () => {
+    setUsageData({});
+  };
+
   return (
-    <UsageContext.Provider value={{ usageData, addUsage, removeUsage, getUsage }}>
+    <UsageContext.Provider value={{ usageData, addUsage, removeUsage, getUsage,clearAllUsage  }}>
       {children}
     </UsageContext.Provider>
   );

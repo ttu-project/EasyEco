@@ -6,7 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
 import { useUsage } from './Usage/UsageContext';
 
-// ===== HELPERS =====
+
 
 const parseWatt = (wattStr) => {
   const match = wattStr.match(/(\d+)/);
@@ -39,7 +39,7 @@ const calculateMeterBill = (totalUnits) => {
   return totalCost;
 };
 
-// ===== COMPONENT =====
+
 
 export default function UsageDetail() {
   const router = useRouter();
@@ -53,34 +53,66 @@ export default function UsageDetail() {
     'rice', 'pot', 'kettle', 'vacuum'
   ];
 
+  
+  let dailyUnits = 0;      
+  let monthlyUnits = 0;    
+
   categories.forEach((cat) => {
     const specs = getUsage(cat);
     if (specs && specs.length > 0) {
       specs.forEach((spec) => {
         const watt = parseWatt(spec.watt);
-        const hours = parseTimeToHours(spec.time);
-        const dailyUnits = (watt * hours) / 1000;
-        const monthlyUnits = dailyUnits * 30;
+        const hoursPerDay = parseTimeToHours(spec.time);
+        
+        const daily = (watt * hoursPerDay) / 1000;
+        const monthly = daily * 30;
+        
+        dailyUnits += daily;
+        monthlyUnits += monthly;
+      });
+    }
+  });
+
+  
+  const current = Math.round(dailyUnits); 
+  const estimated = current * 30;
+
+  const totalDailyCost = calculateMeterBill(current);
+  const totalMonthlyCost = calculateMeterBill(estimated);
+
+  const isCurrent = type === 'current';
+
+  
+  categories.forEach((cat) => {
+    const specs = getUsage(cat);
+    if (specs && specs.length > 0) {
+      specs.forEach((spec) => {
+        const watt = parseWatt(spec.watt);
+        const hoursPerDay = parseTimeToHours(spec.time);
+        const daily = (watt * hoursPerDay) / 1000;
+        const monthly = daily * 30;
+
+        
+        const itemDailyCost = dailyUnits > 0 
+          ? (daily / dailyUnits) * totalDailyCost 
+          : 0;
+        const itemMonthlyCost = monthlyUnits > 0 
+          ? (monthly / monthlyUnits) * totalMonthlyCost 
+          : 0;
 
         allItems.push({
           id: spec.id,
           name: spec.name,
           watt: spec.watt,
-          dailyUnits: dailyUnits,
-          monthlyUnits: monthlyUnits,
-          dailyCost: calculateMeterBill(Math.round(dailyUnits)),
-          monthlyCost: calculateMeterBill(Math.round(monthlyUnits)),
+          dailyUnits: Math.round(daily),
+          monthlyUnits: Math.round(monthly),
+          dailyCost: Math.round(itemDailyCost),
+          monthlyCost: Math.round(itemMonthlyCost),
         });
       });
     }
   });
 
-  const totalDailyUnits = allItems.reduce((sum, item) => sum + item.dailyUnits, 0);
-  const totalMonthlyUnits = allItems.reduce((sum, item) => sum + item.monthlyUnits, 0);
-  const totalDailyCost = allItems.reduce((sum, item) => sum + item.dailyCost, 0);
-  const totalMonthlyCost = allItems.reduce((sum, item) => sum + item.monthlyCost, 0);
-
-  const isCurrent = type === 'current';
   const displayItems = allItems.map(item => ({
     ...item,
     units: isCurrent ? item.dailyUnits : item.monthlyUnits,
@@ -113,12 +145,12 @@ export default function UsageDetail() {
 
           <View style={styles.divider} />
 
-          {/* Scrollable List */}
+          {/* Scrollable List - Now shows per-item cost! */}
           <ScrollView style={styles.scrollArea}>
             {displayItems.map((item) => (
               <View key={item.id} style={styles.tableRow}>
                 <Text style={[styles.deviceCell, { flex: 1.5 }]}>{item.name}({item.watt})</Text>
-                <Text style={[styles.unitCell, { flex: 1 }]}>{item.units.toFixed(0)} units</Text>
+                <Text style={[styles.unitCell, { flex: 1 }]}>{item.units} units</Text>
                 <Text style={[styles.costCell, { flex: 1 }]}>{item.cost.toLocaleString()} MMK</Text>
               </View>
             ))}
@@ -126,16 +158,16 @@ export default function UsageDetail() {
 
           <View style={styles.divider} />
 
-          {/* Summary */}
+          {/* Summary - EXACT SAME AS INDEX.JS */}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Current Usage :</Text>
-            <Text style={styles.summaryUnits}>{totalDailyUnits.toFixed(0)} units</Text>
+            <Text style={styles.summaryUnits}>{current} units</Text>
             <Text style={styles.summaryCost}>{totalDailyCost.toLocaleString()} MMK</Text>
           </View>
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Estimated Total :</Text>
-            <Text style={styles.summaryUnits}>{totalMonthlyUnits.toFixed(0)} units</Text>
+            <Text style={styles.summaryUnits}>{estimated} units</Text>
             <Text style={styles.summaryCost}>{totalMonthlyCost.toLocaleString()} MMK</Text>
           </View>
         </View>
@@ -145,7 +177,6 @@ export default function UsageDetail() {
 }
 
 // ===== STYLES =====
-
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -153,7 +184,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 20,
-   
   },
   card: {
     width: '100%',
@@ -166,9 +196,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
-     borderColor:'#1658C3',
-    borderWidth:3
-    
+    borderColor: '#1658C3',
+    borderWidth: 3
   },
   closeBtn: {
     alignSelf: 'flex-end',

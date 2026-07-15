@@ -31,18 +31,8 @@ const ICON_MAP = {
   vacuum: require('../../assets/Vacuum_cleaner.png'),
 };
 
-// ===== USAGE DATA (this would come from your storage/context in real app) =====
-// For demo, showing how data looks when user has added usage
-const USAGE_DATA = {
-  // 'fan': [  // Example: Electric Fan has usage data
-  //   { watt: '300 Watt', time: '2 hr 00 min' },
-  //   { watt: '500 Watt', time: '2 hr 00 min' },
-  //   { watt: '75 Watt', time: '5 hr 00 min' },  // This will show as "..."
-  // ],
-  // 'tv': [
-  //   { watt: '150 Watt', time: '4 hr 00 min' },
-  // ],
-};
+
+const USAGE_DATA = {};
 
 const PAGES_DATA = [
   [
@@ -66,24 +56,35 @@ const PAGES_DATA = [
 ];
 
 const RATES = [
-  { limit: 50,   rate: 50 },   // 1-50 units @ 50 MMK
-  { limit: 50,   rate: 150 },  // 51-100 units @ 100 MMK
-  { limit: 100,  rate: 300 },  // 101-200 units @ 150 MMK
-  { limit: Infinity, rate: 350 }, // 201+ units @ 300 MMK
+  { limit: 50,   rate: 50 },   
+  { limit: 50,   rate: 100 },  
+  { limit: 100,  rate: 150 },  
+  { limit: Infinity, rate: 300 }, 
 ];
 
 const calculateMeterBill = (totalUnits) => {
   let remaining = totalUnits;
   let totalCost = 0;
+  const breakdown = [];
 
   for (const tier of RATES) {
     if (remaining <= 0) break;
     const unitsInTier = Math.min(remaining, tier.limit);
-    totalCost += unitsInTier * tier.rate;
+    const tierCost = unitsInTier * tier.rate;
+    totalCost += tierCost;
     remaining -= unitsInTier;
+     breakdown.push({
+      units: unitsInTier,
+      rate: tier.rate,
+      cost: tierCost,
+    });
   }
 
-  return { units: totalUnits, cost: totalCost };
+  return { 
+    totalUnits,
+    totalCost,
+    breakdown,
+   };
 };
 
 export default function Index() {
@@ -96,9 +97,7 @@ export default function Index() {
   const [estimatedUnits, setEstimatedUnits] = useState(0);
   const [estimatedCost, setEstimatedCost] = useState(0);
 
-  // ===== IN REAL APP: Get usage data from context/storage =====
-  // const { usageData } = useUsageContext(); 
-  // const usageData = USAGE_DATA; // Replace with real data source
+ 
 
   const handleDotPress = (pageIndex) => {
     setActivePage(pageIndex);
@@ -118,15 +117,13 @@ export default function Index() {
     }
   };
 
-  // ===== HELPERS FOR BILL CALCULATION =====
-
-// Extract number from "75W" or "75 Watt"
+  
 const parseWatt = (wattStr) => {
   const match = wattStr.match(/(\d+)/);
   return match ? parseInt(match[1], 10) : 0;
 };
 
-// Convert "2 hr 30 min" → hours (2.5)
+
 const parseTimeToHours = (timeStr) => {
   const hrMatch = timeStr.match(/(\d+)\s*hr/);
   const minMatch = timeStr.match(/(\d+)\s*min/);
@@ -162,18 +159,18 @@ const parseTimeToHours = (timeStr) => {
     });
   };
 
-  // ===== RENDER CARD CONTENT BASED ON USAGE DATA =====
+  
   const renderCardContent = (item) => {
-    const specs = getUsage(item.categoryId); // Get usage for this category
+    const specs = getUsage(item.categoryId); 
     
-    // NO USAGE YET → Show "Add Usage Details"
+   
     if (!specs || specs.length === 0) {
       return (
         <Text style={styles.addActionText}>Add Usage Details</Text>
       );
     }
 
-    // HAS USAGE → Show up to 2 entries, then "..."
+    
     return (
       <View style={styles.specsContainer}>
         {/* Show max 2 items */}
@@ -193,8 +190,8 @@ const parseTimeToHours = (timeStr) => {
   };
 
   const calculateBill = () => {
-    let dailyUnits = 0;      // Current Usage (no ×30)
-    let monthlyUnits = 0;    // Estimated Total (×30)
+    let dailyUnits = 0;      
+    let monthlyUnits = 0;    
 
     PAGES_DATA.forEach((page) => {
       page.forEach((item) => {
@@ -214,16 +211,19 @@ const parseTimeToHours = (timeStr) => {
       });
     });
 
-    const current = parseFloat(dailyUnits.toFixed(2));
-    const estimated = parseFloat(monthlyUnits.toFixed(2));
-    
-    const { cost: currentCost } = calculateMeterBill(current);
-    const { cost: estimatedCost } = calculateMeterBill(estimated);
+  const current = Math.round(dailyUnits); 
+  const estimated =  current * 30; 
+  const currentResult = calculateMeterBill(current);
+  const estimatedResult = calculateMeterBill(estimated);
 
+   const { totalCost: currentCostValue } = calculateMeterBill(current);
+  const { totalCost: estimatedCostValue } = calculateMeterBill(estimated);
+
+    
     setCurrentUnits(current);
-    setCurrentCost(currentCost);
+    setCurrentCost(currentCostValue);
     setEstimatedUnits(estimated);
-    setEstimatedCost(estimatedCost);
+    setEstimatedCost(estimatedCostValue);
   };
 
 
@@ -255,7 +255,7 @@ const parseTimeToHours = (timeStr) => {
             <View style={styles.tableRow}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>Current Usage :</Text>
               <Text style={styles.rowValue}>{currentUnits} units</Text>
-              <Text style={styles.rowValue}>{currentCost.toLocaleString()}MMK</Text>
+              <Text style={styles.rowValue}>{currentCost.toLocaleString()} MMK</Text>
             </View>
             <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>Estimated Total :</Text>
@@ -328,10 +328,10 @@ const styles = StyleSheet.create({
   pageContainer: { width: SCREEN_WIDTH - 40 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'},
   applianceCard: { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: '#3B7AEE', borderRadius: 16, padding: 12, marginBottom: 15 },
-  iconCircle: { width: 26, height: 26, backgroundColor: '#FFF', borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
+  iconCircle: { width: 36, height: 36, backgroundColor: '#FFF', borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   cardTitle: { fontSize: 14, fontWeight: '600', color: '#FFF' },
-  underline: { height: 1, backgroundColor: 'rgba(255,255,255,0.3)', marginVertical: 8 },
-  paginationContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 10 },
+  underline: { height: 1, backgroundColor: 'rgba(255,255,255,0.3)', marginVertical: 4 },
+  paginationContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 6 },
   dot: { height: 4, borderRadius: 3, marginHorizontal: 4 },
   activeDot: { width: 24, backgroundColor: '#A2B9E3' },
   inactiveDot: { width: 10, backgroundColor: '#D4E0F7' },
@@ -347,9 +347,9 @@ const styles = StyleSheet.create({
     gap: 8                 // Adds space between Watt and Time
   },
   specText: { 
-    fontSize: 12, 
+    fontSize: 11, 
     color: '#FFF',
-    fontWeight: '500'
+    fontWeight: '400'
   },
    moreText: { 
     fontSize: 14, 
