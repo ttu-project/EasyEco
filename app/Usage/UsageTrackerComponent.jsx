@@ -282,12 +282,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    marginBottom: 5 
+    marginBottom: 5 ,
+     width: '100%', 
+
   },
   usageTextBold: { 
     color: 'white', 
     fontWeight: 'bold', 
-    fontSize: 11 
+    fontSize: 9 ,
+     marginRight: 6, 
+     numberOfLines: 1, 
   },
   usageTextLight: { 
     color: '#e0e0e0', 
@@ -295,6 +299,10 @@ const styles = StyleSheet.create({
   },
   closeBtn: { 
     color: '#fff', 
-    fontSize: 16 
+    fontSize: 16 ,
+    width: 26,            
+    height: 26,           
+  textAlign: 'center',  
+  lineHeight: 24, 
   },
 });
