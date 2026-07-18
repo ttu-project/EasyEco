@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   closeBtn: { 
     color: '#fff', 
     fontSize: 16 ,
-    width: 26,            
+    width: 18,            
     height: 26,           
   textAlign: 'center',  
   lineHeight: 24, 

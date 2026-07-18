@@ -8,20 +8,23 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Bot from '../assets/Bot.svg';
-import Graph from '../assets/Graph.svg';
+import Graph from '../assets/Subtract.svg';
 import Home from '../assets/Home.svg';
-import Point from '../assets/Point.svg';
+import Point from '../assets/Graph.svg';
 import User from '../assets/User.svg';
 import Svg, { Path } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const FLOATING_PADDING = 25;
+const FLOATING_PADDING = 20;
 const BAR_WIDTH = SCREEN_WIDTH - (FLOATING_PADDING * 2);
+
 
 // ==========================================================
 // SVG Icons & Background
 // ==========================================================
 const TabBgSvg = ({ width, height, colors }) => {
+  const insets = useSafeAreaInsets();
+ 
   const center = width / 2;
   const notchRadius = 26;   // medium notch
   const curveDepth = 26;    // medium curve
@@ -70,9 +73,9 @@ export function TabBar({ state, descriptors, navigation }) {
   
   const routes = state?.routes || [
     { key: 'index', name: 'index' }, 
-    { key: 'analytics', name: 'analytics' }, 
+    { key: 'calculate', name: 'calculate' }, 
     { key: 'robot', name: 'robot' }, 
-    { key: 'finance', name: 'finance' }, 
+    { key: 'analytics', name: 'analytics' }, 
     { key: 'profile', name: 'profile' }
   ];
   
@@ -80,9 +83,7 @@ export function TabBar({ state, descriptors, navigation }) {
   const barHeight = Platform.OS === 'ios' ? 62 : 54;  // medium bar
   const robotIndex = routes.findIndex(r => r.name.toLowerCase() === 'robot');
 
-  const bottomOffset = insets.bottom > 0 
-    ? insets.bottom 
-    : FLOATING_PADDING;
+   const bottomOffset = insets.bottom;
 
   return (
     <View style={[styles.outerContainer, { bottom: bottomOffset }]}>
@@ -96,8 +97,8 @@ export function TabBar({ state, descriptors, navigation }) {
             const renderIcon = () => {
               const name = route.name.toLowerCase();
               if (name === 'index') return <HomeIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
-              if (name === 'analytics') return <ChartIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
-              if (name === 'finance') return <DollarIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
+              if (name === 'calculate') return <ChartIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
+              if (name === 'analytics') return <DollarIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
               return <UserIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
             };
             
