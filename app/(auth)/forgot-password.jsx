@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,20 +13,22 @@ import {
 } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import axios from 'axios';
 import { getAuth, signInWithPhoneNumber } from '@react-native-firebase/auth';
 import { API_BASE_URL } from '../../config/api';
 
 export default function Forgot() {
-  const [screenStep, setScreenStep] = useState(1);
-  const [inputValue, setInputValue] = useState('');
+  const { token: resetTokenFromLink } = useLocalSearchParams();
+  const [screenStep, setScreenStep] = useState(resetTokenFromLink ? 3 : 1);
+  const [identifier, setIdentifier] = useState('');
+  const [resetMode, setResetMode] = useState(null);
+  const [resetToken, setResetToken] = useState(resetTokenFromLink || '');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(60);
-  const [confirmation, setConfirmation] = useState(null);
-  const [resetToken, setResetToken] = useState('');
-  const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -34,16 +36,39 @@ export default function Forgot() {
   const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
   const otpInputRefs = useRef([]);
+  useEffect(() => {
+    if (resetTokenFromLink) {
+      setResetToken(resetTokenFromLink);
+      setScreenStep(3);
+    }
+  }, [resetTokenFromLink]);
 
   useEffect(() => {
-    let interval = null;
-    if (screenStep === 2 && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prevTime) => prevTime - 1);
-      }, 1000);
-    }
+    if (screenStep !== 2 || resetMode !== 'phone' || timer <= 0) return undefined;
+    const interval = setInterval(() => setTimer((seconds) => seconds - 1), 1000);
     return () => clearInterval(interval);
-  }, [screenStep, timer]);
+  }, [screenStep, resetMode, timer]);
+
+  const requestPasswordReset = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(identifier.trim())) {
+      Alert.alert('Invalid email', 'Please enter the email address registered with EasyEco.');
+      return;
+    }
+
+    try {
+      setIsSendingEmail(true);
+      await axios.post(`${API_BASE_URL}/users/request-password-reset`, { email: identifier.trim() });
+      setResetMode('email');
+      setScreenStep(2);
+    } catch (error) {
+      Alert.alert(
+        'Could not send email',
+        error.response?.data?.message || error.message || 'Please try again.'
+      );
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const normalisePhoneNumber = (phoneNumber) => {
     const value = phoneNumber.replace(/[\s-]/g, '');
@@ -53,47 +78,39 @@ export default function Forgot() {
     return value;
   };
 
-  const formatPhoneNumber = (phoneNumber) => {
-    if (phoneNumber.length > 3) {
-      return `${phoneNumber.slice(0, 4)}******${phoneNumber.slice(-3)}`;
-    }
-    return phoneNumber;
-  };
+  const formatPhoneNumber = (phoneNumber) => (
+    phoneNumber.length > 3 ? `${phoneNumber.slice(0, 4)}******${phoneNumber.slice(-3)}` : phoneNumber
+  );
 
-  const sendVerificationCode = async () => {
-    const rawPhoneNumber = inputValue.trim();
-    if (!rawPhoneNumber) {
-      Alert.alert('Phone number required', 'Please enter the phone number registered with EasyEco.');
-      return;
-    }
-
-    if (rawPhoneNumber.includes('@')) {
-      Alert.alert('Phone verification only', 'Email password reset is not available yet. Please enter your registered phone number.');
-      return;
-    }
-
-    const phoneNumber = normalisePhoneNumber(rawPhoneNumber);
+  const sendPhoneVerification = async () => {
+    const phoneNumber = normalisePhoneNumber(identifier.trim());
     if (!/^\+\d{8,15}$/.test(phoneNumber)) {
       Alert.alert('Invalid phone number', 'Use international format, for example +959123456789.');
       return;
     }
 
     try {
-      setIsSendingCode(true);
+      setIsSendingEmail(true);
       const result = await signInWithPhoneNumber(getAuth(), phoneNumber);
-      setInputValue(phoneNumber);
+      setIdentifier(phoneNumber);
       setConfirmation(result);
       setOtp(['', '', '', '', '', '']);
       setTimer(60);
+      setResetMode('phone');
       setScreenStep(2);
     } catch (error) {
       Alert.alert('Could not send code', error.message || 'Please try again.');
     } finally {
-      setIsSendingCode(false);
+      setIsSendingEmail(false);
     }
   };
 
-  const verifyCode = async () => {
+  const handleContinue = () => {
+    if (identifier.includes('@')) return requestPasswordReset();
+    return sendPhoneVerification();
+  };
+
+  const verifyPhoneCode = async () => {
     const code = otp.join('');
     if (code.length !== 6 || !confirmation) {
       Alert.alert('Enter the code', 'Please enter the 6-digit verification code.');
@@ -108,45 +125,28 @@ export default function Forgot() {
       setResetToken(response.data.resetToken);
       setScreenStep(3);
     } catch (error) {
-      Alert.alert(
-        'Verification failed',
-        error.response?.data?.message || error.message || 'The code is invalid or expired.'
-      );
+      Alert.alert('Verification failed', error.response?.data?.message || error.message || 'The code is invalid or expired.');
     } finally {
       setIsVerifyingCode(false);
     }
   };
 
-  const resendCode = async () => {
-    if (timer > 0 || isSendingCode) return;
-    await sendVerificationCode();
-  };
-
   const handleOtpChange = (value, index) => {
     const digits = value.replace(/\D/g, '').slice(0, 6);
+    const nextOtp = [...otp];
     if (!digits) {
-      const newOtp = [...otp];
-      newOtp[index] = '';
-      setOtp(newOtp);
-      return;
+      nextOtp[index] = '';
+    } else {
+      digits.split('').forEach((digit, digitIndex) => {
+        if (index + digitIndex < nextOtp.length) nextOtp[index + digitIndex] = digit;
+      });
     }
-
-    const newOtp = [...otp];
-    digits.split('').forEach((digit, digitIndex) => {
-      if (index + digitIndex < newOtp.length) {
-        newOtp[index + digitIndex] = digit;
-      }
-    });
-    setOtp(newOtp);
-
-    const nextIndex = Math.min(index + digits.length, newOtp.length - 1);
-    otpInputRefs.current[nextIndex]?.focus();
+    setOtp(nextOtp);
+    if (digits) otpInputRefs.current[Math.min(index + digits.length, nextOtp.length - 1)]?.focus();
   };
 
-  const handleOtpKeyPress = (event, index) => {
-    if (event.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      otpInputRefs.current[index - 1]?.focus();
-    }
+  const resendPhoneCode = () => {
+    if (timer === 0 && !isSendingEmail) sendPhoneVerification();
   };
 
   const handleResetPassword = async () => {
@@ -160,7 +160,7 @@ export default function Forgot() {
     }
 
     if (!resetToken) {
-      Alert.alert('Verification expired', 'Please verify your phone number again.');
+      Alert.alert('Reset link required', 'Open the password reset link from your email.');
       setScreenStep(1);
       return;
     }
@@ -206,8 +206,8 @@ export default function Forgot() {
             style={styles.backButton}
             onPress={() => {
               if (screenStep > 1) {
-                setScreenStep(screenStep - 1);
-                if (screenStep === 2) setTimer(60);
+                setResetMode(null);
+                setScreenStep(1);
               } else {
                 router.back();
               }
@@ -230,26 +230,26 @@ export default function Forgot() {
           <View style={styles.content}>
             <Text style={styles.title}>Forgot password</Text>
             <Text style={styles.subtitle}>
-              Enter your registered phone number and we'll send you a verification code.
+              Enter your email or phone number and we'll send you a verification method.
             </Text>
 
-            <Text style={styles.inputLabel}>Phone number</Text>
+            <Text style={styles.inputLabel}>Email or phone number</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter phone number, e.g. +959123456789"
+              placeholder="Enter email or phone number"
               placeholderTextColor="#94A3B8"
-              value={inputValue}
-              onChangeText={setInputValue}
-              keyboardType="phone-pad"
+              value={identifier}
+              onChangeText={setIdentifier}
+              keyboardType="default"
               autoCapitalize="none"
             />
 
             <TouchableOpacity
               style={styles.button}
-              onPress={sendVerificationCode}
-              disabled={isSendingCode}
+              onPress={handleContinue}
+              disabled={isSendingEmail}
             >
-              <Text style={styles.buttonText}>{isSendingCode ? 'Sending code...' : 'Continue'}</Text>
+              <Text style={styles.buttonText}>{isSendingEmail ? 'Sending...' : 'Continue'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -257,49 +257,55 @@ export default function Forgot() {
        
         {screenStep === 2 && (
           <View style={styles.content}>
-            <Text style={styles.title}>Enter verification code</Text>
-            <Text style={styles.subtitle}>
-              We've sent a 6-digit code to{' '}
-              <Text style={styles.highlightText}>
-                {formatPhoneNumber(inputValue)}
-              </Text>
-            </Text>
+            {resetMode === 'email' ? (
+              <>
+                <Text style={styles.title}>Check your email</Text>
+                <Text style={styles.subtitle}>
+                  If an EasyEco account uses <Text style={styles.highlightText}>{identifier}</Text>, a password reset link has been sent. Open the link to set a new password.
+                </Text>
 
-            <View style={styles.otpContainer}>
-              {otp.map((digit, index) => (
-                <TextInput
-                  key={index}
-                  ref={(input) => { otpInputRefs.current[index] = input; }}
-                  style={styles.otpBox}
-                  maxLength={6}
-                  keyboardType="number-pad"
-                  value={digit}
-                  onChangeText={(value) => handleOtpChange(value, index)}
-                  onKeyPress={(event) => handleOtpKeyPress(event, index)}
-                  textContentType="oneTimeCode"
-                  autoComplete="sms-otp"
-                />
-              ))}
-            </View>
+                <TouchableOpacity onPress={requestPasswordReset} disabled={isSendingEmail}>
+                  <Text style={styles.resendText}>Send another link</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              disabled={timer > 0}
-              onPress={resendCode}
-            >
-              <Text style={[styles.resendText, timer > 0 && styles.resendDisabled]}>
-                {timer > 0
-                  ? `Resend code in 00:${timer < 10 ? '0' + timer : timer}`
-                  : 'Resend code'}
-              </Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={() => router.replace('/(auth)/login')}>
+                  <Text style={styles.buttonText}>Back to Login</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.title}>Enter verification code</Text>
+                <Text style={styles.subtitle}>
+                  We've sent a 6-digit code to <Text style={styles.highlightText}>{formatPhoneNumber(identifier)}</Text>
+                </Text>
 
-            <TouchableOpacity
-              style={styles.button}
-              onPress={verifyCode}
-              disabled={isVerifyingCode}
-            >
-              <Text style={styles.buttonText}>{isVerifyingCode ? 'Verifying...' : 'Verify Code'}</Text>
-            </TouchableOpacity>
+                <View style={styles.otpContainer}>
+                  {otp.map((digit, index) => (
+                    <TextInput
+                      key={index}
+                      ref={(input) => { otpInputRefs.current[index] = input; }}
+                      style={styles.otpBox}
+                      maxLength={6}
+                      keyboardType="number-pad"
+                      value={digit}
+                      onChangeText={(value) => handleOtpChange(value, index)}
+                      textContentType="oneTimeCode"
+                      autoComplete="sms-otp"
+                    />
+                  ))}
+                </View>
+
+                <TouchableOpacity disabled={timer > 0} onPress={resendPhoneCode}>
+                  <Text style={[styles.resendText, timer > 0 && styles.resendDisabled]}>
+                    {timer > 0 ? `Resend code in 00:${timer < 10 ? `0${timer}` : timer}` : 'Resend code'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.button} onPress={verifyPhoneCode} disabled={isVerifyingCode}>
+                  <Text style={styles.buttonText}>{isVerifyingCode ? 'Verifying...' : 'Verify Code'}</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 

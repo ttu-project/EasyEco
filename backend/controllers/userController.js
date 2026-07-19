@@ -2,6 +2,9 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { getAuth } = require('firebase-admin/auth');
+const { randomUUID } = require('crypto');
+const fs = require('fs/promises');
+const path = require('path');
 require('../config/firebaseAdmin');
 
 const axios = require('axios');
@@ -20,10 +23,72 @@ const phoneNumberVariants = (phoneNumber) => {
   return [...new Set([phoneNumber, normalized, local])];
 };
 
+const PASSWORD_RESET_TTL = '30m';
+
+const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 10 * 1024 * 1024;
+
+const saveProfileImage = async (imageDataUrl, req) => {
+  if (
+    typeof imageDataUrl !== 'string' ||
+    imageDataUrl.length > MAX_PROFILE_IMAGE_DATA_URL_LENGTH
+  ) {
+    const error = new Error('Please choose a valid image smaller than 10 MB.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const match = imageDataUrl.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if (!match) {
+    const error = new Error('Please choose a JPG, PNG, or WebP image.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const extension = match[1].toLowerCase() === 'jpg' ? 'jpg' : match[1].toLowerCase();
+  const imageBuffer = Buffer.from(match[2], 'base64');
+  const uploadDirectory = path.join(__dirname, '..', 'uploads', 'profile-images');
+  const filename = `${randomUUID()}.${extension}`;
+
+  await fs.mkdir(uploadDirectory, { recursive: true });
+  await fs.writeFile(path.join(uploadDirectory, filename), imageBuffer);
+
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  return `${publicBaseUrl}/uploads/profile-images/${filename}`;
+};
+
+const sendPasswordResetEmail = async (email, resetToken) => {
+  const { RESEND_API_KEY, EMAIL_FROM, RESET_PASSWORD_URL } = process.env;
+
+  if (!RESEND_API_KEY || !EMAIL_FROM || !RESET_PASSWORD_URL) {
+    throw new Error('Email reset is not configured on the server.');
+  }
+
+  const resetUrl = `${RESET_PASSWORD_URL}${RESET_PASSWORD_URL.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`;
+  await axios.post(
+    'https://api.resend.com/emails',
+    {
+      from: EMAIL_FROM,
+      to: [email],
+      subject: 'Reset your EasyEco password',
+      html: `
+        <p>Hello,</p>
+        <p>We received a request to reset your EasyEco password.</p>
+        <p><a href="${resetUrl}">Reset password</a></p>
+        <p>This link expires in 30 minutes. If you did not request this, you can safely ignore this email.</p>
+      `,
+    },
+    { headers: { Authorization: `Bearer ${RESEND_API_KEY}` } }
+  );
+};
+
 // Register
 const registerUser = async (req, res) => {
   try {
-    const { name, phoneNumber, password } = req.body;
+    const { name, phoneNumber, email, password } = req.body;
+
+    if (!email?.trim()) {
+      return res.status(400).json({ message: 'Email is required for password recovery.' });
+    }
 
     const userExists = await User.findOne({ phoneNumber });
 
@@ -33,6 +98,11 @@ const registerUser = async (req, res) => {
       });
     }
 
+    const emailExists = await User.findOne({ email: email.trim().toLowerCase() });
+    if (emailExists) {
+      return res.status(400).json({ message: 'That email address is already in use.' });
+    }
+
     const salt = await bcrypt.genSalt(10);
 
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -40,6 +110,7 @@ const registerUser = async (req, res) => {
     const user = await User.create({
       name,
       phoneNumber,
+      email: email.trim().toLowerCase(),
       password: hashedPassword,
     });
 
@@ -55,6 +126,8 @@ const registerUser = async (req, res) => {
       _id: user._id,
       name: user.name,
       phoneNumber: user.phoneNumber,
+      email: user.email,
+      profileImage: user.profileImage,
       token,
     });
 
@@ -62,6 +135,36 @@ const registerUser = async (req, res) => {
     res.status(500).json({
       message: error.message,
     });
+  }
+};
+
+const requestPasswordReset = async (req, res) => {
+  try {
+    const email = req.body.email?.trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    const user = await User.findOne({ email });
+
+    // Use the same response for unknown and social-only accounts so this
+    // endpoint does not reveal which email addresses have accounts.
+    if (user?.password) {
+      const resetToken = jwt.sign(
+        { id: user._id, purpose: 'password-reset' },
+        process.env.JWT_SECRET,
+        { expiresIn: PASSWORD_RESET_TTL }
+      );
+      await sendPasswordResetEmail(user.email, resetToken);
+    }
+
+    return res.json({ message: 'If this email belongs to an EasyEco account, a reset link has been sent.' });
+  } catch (error) {
+    if (error.message === 'Email reset is not configured on the server.') {
+      return res.status(503).json({ message: error.message });
+    }
+
+    return res.status(500).json({ message: 'Could not send the password reset email. Please try again later.' });
   }
 };
 
@@ -101,6 +204,8 @@ const loginUser = async (req, res) => {
       _id: user._id,
       name: user.name,
       phoneNumber: user.phoneNumber,
+      email: user.email,
+      profileImage: user.profileImage,
       token,
     });
 
@@ -113,7 +218,7 @@ const loginUser = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const { name, phoneNumber, email } = req.body;
+    const { name, phoneNumber, email, profileImage } = req.body;
 
     if (!name?.trim() || !phoneNumber?.trim()) {
       return res.status(400).json({ message: 'Name and phone number are required.' });
@@ -128,13 +233,19 @@ const updateProfile = async (req, res) => {
       return res.status(400).json({ message: 'That phone number is already in use.' });
     }
 
+    const updates = {
+      name: name.trim(),
+      phoneNumber: phoneNumber.trim(),
+      email: email?.trim() || undefined,
+    };
+
+    if (profileImage) {
+      updates.profileImage = await saveProfileImage(profileImage, req);
+    }
+
     const user = await User.findByIdAndUpdate(
       req.userId,
-      {
-        name: name.trim(),
-        phoneNumber: phoneNumber.trim(),
-        email: email?.trim() || undefined,
-      },
+      updates,
       { new: true, runValidators: true }
     );
 
@@ -147,13 +258,14 @@ const updateProfile = async (req, res) => {
       name: user.name,
       phoneNumber: user.phoneNumber,
       email: user.email,
+      profileImage: user.profileImage,
     });
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(400).json({ message: 'That email address is already in use.' });
     }
 
-    res.status(500).json({ message: error.message });
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 };
 
@@ -304,6 +416,7 @@ const googleLogin = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      profileImage: user.profileImage,
       token: jwtToken,
     });
 
@@ -355,6 +468,7 @@ const facebookLogin = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      profileImage: user.profileImage,
       token: jwtToken,
     });
 
@@ -368,6 +482,7 @@ const facebookLogin = async (req, res) => {
 module.exports = {
   registerUser,
   loginUser,
+  requestPasswordReset,
   updateProfile,
   changePassword,
   verifyResetPhone,

@@ -61,6 +61,8 @@ export default function Profile() {
         setUserName(user?.name || '');
         setEditNumber(user?.phoneNumber || '');
         setEditGmail(user?.email || '');
+        setProfileImage(user?.profileImage || null);
+        setEditProfileImage(user?.profileImage || null);
       } catch (error) {
         console.warn('Unable to load profile:', error);
       }
@@ -175,9 +177,21 @@ export default function Profile() {
     try {
       setIsSavingProfile(true);
       const user = await getUser();
+      const hasNewLocalProfileImage =
+        editProfileImage?.startsWith('file:') ||
+        editProfileImage?.startsWith('content:') ||
+        editProfileImage?.startsWith('blob:');
+      const imageDataUrl = hasNewLocalProfileImage
+        ? await imageUriToDataUrl(editProfileImage)
+        : undefined;
       const response = await axios.put(
         `${API_BASE_URL}/users/profile`,
-        { name, phoneNumber, email: editGmail.trim() },
+        {
+          name,
+          phoneNumber,
+          email: editGmail.trim(),
+          ...(imageDataUrl ? { profileImage: imageDataUrl } : {}),
+        },
         { headers: { Authorization: `Bearer ${user?.token}` } }
       );
       const updatedUser = { ...user, ...response.data };
@@ -186,7 +200,8 @@ export default function Profile() {
       setUserName(updatedUser.name);
       setEditNumber(updatedUser.phoneNumber || '');
       setEditGmail(updatedUser.email || '');
-      setProfileImage(editProfileImage);
+      setProfileImage(updatedUser.profileImage || null);
+      setEditProfileImage(updatedUser.profileImage || null);
       setEditModalVisible(false);
     } catch (error) {
       if (error.response?.status === 401) {
@@ -287,6 +302,22 @@ export default function Profile() {
         },
       },
     ]);
+  };
+
+  const imageUriToDataUrl = async (uri) => {
+    if (!uri?.startsWith('file:') && !uri?.startsWith('content:') && !uri?.startsWith('blob:')) {
+      return null;
+    }
+
+    const imageResponse = await fetch(uri);
+    const imageBlob = await imageResponse.blob();
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Unable to read the selected image.'));
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(imageBlob);
+    });
   };
 
   const pickImage = async () => {

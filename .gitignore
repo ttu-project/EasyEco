@@ -35,7 +35,9 @@ yarn-error.*
 .env.*
 backend/.env
 backend/.env.*
+!backend/.env.example
 .env*.local
+backend/uploads/
 
 # typescript
 *.tsbuildinfo
