@@ -104,9 +104,15 @@ export function UsageProvider({ children }) {
     return usageData[category] || [];
   };
 
+  // Clear only the in-memory data when a user logs out. Their saved usage
+  // remains associated with their account and is fetched again after login.
+  const clearAllUsage = () => {
+    setUsageData({});
+  };
+
   return (
     <UsageContext.Provider
-      value={{ usageData, addUsage, removeUsage, getUsage, fetchUsage }}
+      value={{ usageData, addUsage, removeUsage, getUsage, fetchUsage, clearAllUsage }}
     >
       {children}
     </UsageContext.Provider>

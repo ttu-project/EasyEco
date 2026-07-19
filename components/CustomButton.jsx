@@ -48,5 +48,5 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.55,
   },
-  text: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  text: { color: '#fff', fontWeight: 'bold', fontSize: 16, maxFontSizeMultiplier: 1.2 },
 });

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import axios from 'axios';
 import { saveSession } from '../utils/authStorage';
+import { showAuthSuccessNotification } from '../utils/authNotification';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 
@@ -39,7 +40,7 @@ const HEADER_COLOR = '#3B3BFF';
 const GOOGLE_REDIRECT_URI = 'com.anonymous.easyeco:/oauthredirect';
 const FACEBOOK_REDIRECT_URI = `fb${FACEBOOK_APP_ID}://authorize`;
 const AUTH_REDIRECT_OPTIONS = {
-  scheme: 'easyeco',
+  scheme: 'com.anonymous.easyeco',
 };
 
 export default function SignUpScreen() {
@@ -72,6 +73,7 @@ export default function SignUpScreen() {
     webClientId: GOOGLE_WEB_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     redirectUri: GOOGLE_REDIRECT_URI,
+    scopes: ['profile', 'email'],
     selectAccount: true,
   }, AUTH_REDIRECT_OPTIONS);
 
@@ -145,47 +147,32 @@ export default function SignUpScreen() {
     accessToken
   ) => {
     try {
-      const userInfoResponse =
-        await axios.get(
-          'https://www.googleapis.com/userinfo/v2/me',
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-
-      await saveSession({
-        _id: userInfoResponse.data.id,
-        name: userInfoResponse.data.name,
-        email: userInfoResponse.data.email,
-        token: accessToken,
-        provider: 'google',
+      const response = await axios.post(`${API_BASE_URL}/users/google-login`, {
+        accessToken,
       });
 
+      await saveSession({ ...response.data, provider: 'google' });
+
+      await showAuthSuccessNotification(true);
       router.replace('/(main)');
     } catch (error) {
-      Alert.alert('Google Login Failed');
+      Alert.alert(
+        'Google Login Failed',
+        error.response?.data?.message || error.message || 'Please try again.'
+      );
     }
   };
 
   const handleFacebookLogin =
     async (accessToken) => {
       try {
-        const userInfoResponse =
-          await axios.get(
-            `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
-          );
-
-        await saveSession({
-          _id: userInfoResponse.data.id,
-          name: userInfoResponse.data.name,
-          email: userInfoResponse.data.email,
-          picture: userInfoResponse.data.picture,
-          token: accessToken,
-          provider: 'facebook',
+        const response = await axios.post(`${API_BASE_URL}/users/facebook-login`, {
+          accessToken,
         });
 
+        await saveSession({ ...response.data, provider: 'facebook' });
+
+        await showAuthSuccessNotification(true);
         router.replace('/(main)');
       } catch (error) {
         Alert.alert('Facebook Login Failed');
@@ -250,6 +237,7 @@ export default function SignUpScreen() {
       );
 
       await saveSession(response.data);
+      await showAuthSuccessNotification(true);
       router.replace('/(main)');
     } catch (error) {
       Alert.alert(
@@ -535,7 +523,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 20,
     marginTop: -35,
-    minHeight: 600,
+    paddingBottom: 36,
   },
 
   bottomFixed: {

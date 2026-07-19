@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   FlatList,
   Image,
   Pressable,
@@ -11,84 +10,78 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
+import { API_BASE_URL } from '../../config/api';
+import { getToken, getUser } from '../utils/authStorage';
+import { calculateMeterBill, parseTimeToHours, parseWatt } from '../utils/billing';
 
-const { width, height } = Dimensions.get('window');
+const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// ---------- API Configuration ----------
-const API_URL = 'https://your-api-endpoint.com/api/electricity';
-
-// ---------- Dummy Data (12 months) ----------
-const dummyMonthlyData = [
-  { month: 'Jan', value: 45000 },
-  { month: 'Feb', value: 52000 },
-  { month: 'Mar', value: 38000 },
-  { month: 'Apr', value: 61000 },
-  { month: 'May', value: 49000 },
-  { month: 'Jun', value: 55000 },
-  { month: 'Jul', value: 42000 },
-  { month: 'Aug', value: 58000 },
-  { month: 'Sep', value: 63000 },
-  { month: 'Oct', value: 47000 },
-  { month: 'Nov', value: 51000 },
-  { month: 'Dec', value: 39000 },
-];
-
-// Dummy Usage History
-const dummyUsageHistory = [
-  { id: '1', units: 300, price: 30000, date: 'Monday, June 2, 2026' },
-  { id: '2', units: 250, price: 25000, date: 'Monday, June 1, 2026' },
-  { id: '3', units: 400, price: 40000, date: 'Sunday, May 31, 2026' },
-  { id: '4', units: 180, price: 18000, date: 'Saturday, May 30, 2026' },
-  { id: '5', units: 350, price: 35000, date: 'Friday, May 29, 2026' },
-];
-
-// ---------- API Functions ----------
-const fetchMonthlyData = async () => {
-  try {
-    const response = await fetch(`${API_URL}/monthly`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Monthly Data API Error:', error);
-    throw error;
-  }
+const getUsageHeaders = async () => {
+  const [token, user] = await Promise.all([getToken(), getUser()]);
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(user?._id ? { 'X-User-Id': String(user._id) } : {}),
+  };
 };
 
-const fetchUsageHistory = async () => {
-  try {
-    const response = await fetch(`${API_URL}/history`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Usage History API Error:', error);
-    throw error;
-  }
+const fetchUsageRecords = async () => {
+  const response = await fetch(`${API_BASE_URL}/usage`, {
+    method: 'GET',
+    headers: await getUsageHeaders(),
+  });
+  if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+  return response.json();
 };
+
+const getMonthlyData = (records) => {
+  const now = new Date();
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
+    return { month: monthNames[date.getMonth()], year: date.getFullYear(), value: 0 };
+  });
+
+  records.forEach((record) => {
+    const createdAt = new Date(record.createdAt);
+    const month = months.find(
+      (item) => item.year === createdAt.getFullYear() && monthNames.indexOf(item.month) === createdAt.getMonth()
+    );
+    if (!month) return;
+
+    const dailyUnits = (parseWatt(record.watt) * parseTimeToHours(record.time)) / 1000;
+    month.value += calculateMeterBill(dailyUnits * 30);
+  });
+
+  return months.map(({ month, value }) => ({ month, value: Math.round(value) }));
+};
+
+const getUsageHistory = (records) => records.map((record) => {
+  const dailyUnits = (parseWatt(record.watt) * parseTimeToHours(record.time)) / 1000;
+  const monthlyUnits = dailyUnits * 30;
+  return {
+    id: record._id,
+    units: Number(monthlyUnits.toFixed(2)),
+    price: calculateMeterBill(monthlyUnits),
+    date: new Date(record.createdAt).toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    }),
+  };
+});
 
 // ---------- Main Component ----------
 const ElectricityScreen = () => {
+  const { width } = useWindowDimensions();
   // ---- State Variables ----
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [allMonthlyData, setAllMonthlyData] = useState([]);
   const [displayData, setDisplayData] = useState([]);
-  const [usageHistory, setUsageHistory] = useState(dummyUsageHistory);
+  const [usageHistory, setUsageHistory] = useState([]);
   const [maxValue, setMaxValue] = useState(100000);
   const [currentPage, setCurrentPage] = useState(0);
   const [selectedMonth, setSelectedMonth] = useState(null);
@@ -99,42 +92,27 @@ const ElectricityScreen = () => {
     try {
       setError(null);
 
-      const [monthlyResponse, historyResponse] = await Promise.all([
-        fetchMonthlyData(),
-        fetchUsageHistory(),
-      ]);
-
-      if (monthlyResponse && monthlyResponse.data && monthlyResponse.data.length > 0) {
-        setAllMonthlyData(monthlyResponse.data);
-        const firstSix = monthlyResponse.data.slice(0, 6);
-        setDisplayData(firstSix);
-        const max = Math.max(...firstSix.map((item) => item.value));
-        setMaxValue(max > 0 ? max * 1.2 : 100000);
-      } else {
-        setAllMonthlyData(dummyMonthlyData);
-        const firstSix = dummyMonthlyData.slice(0, 6);
-        setDisplayData(firstSix);
-        setMaxValue(100000);
-      }
-
-      if (historyResponse && historyResponse.data && historyResponse.data.length > 0) {
-        const latestFive = historyResponse.data.slice(0, 5);
-        setUsageHistory(latestFive);
-      } else {
-        setUsageHistory(dummyUsageHistory);
-      }
+      const records = await fetchUsageRecords();
+      const monthlyData = getMonthlyData(records);
+      const firstSix = monthlyData.slice(0, 6);
+      setAllMonthlyData(monthlyData);
+      setDisplayData(firstSix);
+      const max = Math.max(...firstSix.map((item) => item.value));
+      setMaxValue(max > 0 ? max * 1.2 : 100000);
+      setUsageHistory(getUsageHistory(records).slice(0, 5));
     } catch (err) {
       console.error('Load Data Error:', err);
       setError(err.message);
-      setAllMonthlyData(dummyMonthlyData);
-      const firstSix = dummyMonthlyData.slice(0, 6);
+      const emptyMonthlyData = getMonthlyData([]);
+      setAllMonthlyData(emptyMonthlyData);
+      const firstSix = emptyMonthlyData.slice(0, 6);
       setDisplayData(firstSix);
       setMaxValue(100000);
-      setUsageHistory(dummyUsageHistory);
+      setUsageHistory([]);
 
       Alert.alert(
         'Error',
-        'Failed to load data. Showing demo data.',
+        'Failed to load your usage data. Please check that the backend is running.',
         [{ text: 'OK' }]
       );
     } finally {
@@ -413,7 +391,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 80,
+    paddingBottom: 120,
   },
 
   // Loading

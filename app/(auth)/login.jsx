@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import axios from 'axios';
 import { saveSession } from '../utils/authStorage';
+import { showAuthSuccessNotification } from '../utils/authNotification';
 
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
@@ -42,7 +43,7 @@ const HEADER_COLOR = '#3B3BFF';
 const GOOGLE_REDIRECT_URI = 'com.anonymous.easyeco:/oauthredirect';
 const FACEBOOK_REDIRECT_URI = `fb${FACEBOOK_APP_ID}://authorize`;
 const AUTH_REDIRECT_OPTIONS = {
-  scheme: 'easyeco',
+  scheme: 'com.anonymous.easyeco',
 };
 
 export default function LoginScreen() {
@@ -172,6 +173,7 @@ export default function LoginScreen() {
       );
 
       await saveSession(response.data);
+      await showAuthSuccessNotification();
       router.replace('/(main)');
     } catch (error) {
       Alert.alert(
@@ -189,29 +191,19 @@ export default function LoginScreen() {
     accessToken
   ) => {
     try {
-      const userInfoResponse =
-        await axios.get(
-          'https://www.googleapis.com/userinfo/v2/me',
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-
-      const googleUser = userInfoResponse.data;
-
-      await saveSession({
-        _id: googleUser.id,
-        name: googleUser.name,
-        email: googleUser.email,
-        token: accessToken,
-        provider: 'google',
+      const response = await axios.post(`${API_BASE_URL}/users/google-login`, {
+        accessToken,
       });
 
+      await saveSession({ ...response.data, provider: 'google' });
+
+      await showAuthSuccessNotification();
       router.replace('/(main)');
     } catch (error) {
-      Alert.alert('Google Login Failed');
+      Alert.alert(
+        'Google Login Failed',
+        error.response?.data?.message || error.message || 'Please try again.'
+      );
     } finally {
       setIsSocialLoginLoading(false);
     }
@@ -220,20 +212,13 @@ export default function LoginScreen() {
   const handleFacebookLogin =
     async (accessToken) => {
       try {
-        const userInfoResponse =
-          await axios.get(
-            `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
-          );
-
-        await saveSession({
-          _id: userInfoResponse.data.id,
-          name: userInfoResponse.data.name,
-          email: userInfoResponse.data.email,
-          picture: userInfoResponse.data.picture,
-          token: accessToken,
-          provider: 'facebook',
+        const response = await axios.post(`${API_BASE_URL}/users/facebook-login`, {
+          accessToken,
         });
 
+        await saveSession({ ...response.data, provider: 'facebook' });
+
+        await showAuthSuccessNotification();
         router.replace('/(main)');
       } catch (error) {
         Alert.alert('Facebook Login Failed');
@@ -355,6 +340,13 @@ export default function LoginScreen() {
                 secure
               />
 
+              <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={() => router.push('/(auth)/forgot-password')}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+              </TouchableOpacity>
+
               <View
                 style={{
                   alignItems: 'center',
@@ -468,6 +460,16 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#3B3BFF',
     fontWeight: 'bold',
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginTop: -2,
+    marginRight: 20,
+  },
+  forgotPasswordText: {
+    color: '#3B3BFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   or: {
     textAlign: 'center',

@@ -15,22 +15,60 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import Svg, { Path } from 'react-native-svg';
 import Bot_Logo from '../../assets/bot_logo.svg';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { askMeterAI } from '../utils/meterAi';
+import axios from 'axios';
+import { API_BASE_URL } from '../../config/api';
+import { getChatById, saveChat } from '../utils/chatHistory';
 
 const FLOATING_PADDING = 20;
 const BAR_HEIGHT = 54;
+// Keep the chat composer above the custom floating bottom tab bar.
+const TAB_BAR_HEIGHT = 60;
+const TAB_BAR_GAP = 16;
+const CHAT_COMPOSER_BOTTOM = FLOATING_PADDING + TAB_BAR_HEIGHT + TAB_BAR_GAP;
+
+const askMeterAI = async (messages) => {
+  const response = await axios.post(`${API_BASE_URL}/chat`, { messages });
+  return response.data.answer;
+};
+
+const toApiMessage = ({ role, text, images = [] }) => {
+  const content = [];
+
+  if (text?.trim()) content.push({ type: 'text', text: text.trim() });
+
+  images.forEach(({ base64, mimeType }) => {
+    if (base64) {
+      content.push({
+        type: 'image_url',
+        image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64}` },
+      });
+    }
+  });
+
+  return {
+    role,
+    content: content.length === 1 && content[0].type === 'text' ? content[0].text : content,
+  };
+};
+
+const getImageUri = ({ uri, base64, mimeType }) => (
+  base64 ? `data:${mimeType || 'image/jpeg'};base64,${base64}` : uri
+);
 
 export default function ChatbotScreen() {
   const KEYBOARD_GAP = 45;
   const insets = useSafeAreaInsets(); 
   const router = useRouter();
+  const { chatId, newChat } = useLocalSearchParams();
   const [inputText, setInputText] = useState('');
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImages, setSelectedImages] = useState([]);
   const [showMenu, setShowMenu] = useState(false);
   const [messages, setMessages] = useState([]);
   const [isSending, setIsSending] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [activeChatId, setActiveChatId] = useState(null);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const keyboardHeightRef = useRef(new Animated.Value(0)).current;
@@ -73,38 +111,74 @@ export default function ChatbotScreen() {
     };
   }, []);
 
-  const handleSend = async () => {
-    const userMessage = inputText.trim();
-    if (userMessage === '' || isSending) return;
+  useEffect(() => {
+    const loadSelectedChat = async () => {
+      if (newChat) {
+        setMessages([]);
+        setActiveChatId(null);
+        setShowSuggestions(true);
+        setInputText('');
+        setSelectedImages([]);
+        return;
+      }
 
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      { id: `${Date.now()}-user`, role: 'user', text: userMessage },
-    ]);
+      if (!chatId || chatId === activeChatId) return;
+
+      const chat = await getChatById(chatId);
+      if (chat) {
+        setMessages(chat.messages || []);
+        setActiveChatId(chat.id);
+        setShowSuggestions(false);
+        setSelectedImages([]);
+      }
+    };
+
+    loadSelectedChat();
+  }, [chatId, newChat]);
+
+  const handleSend = async (messageToSend = inputText) => {
+    const userMessage = messageToSend.trim();
+    const imagesToSend = selectedImages;
+    if ((userMessage === '' && imagesToSend.length === 0) || isSending) return;
+
+    const newUserMessage = {
+      id: `${Date.now()}-user`,
+      role: 'user',
+      text: userMessage || 'Sent an image.',
+      images: imagesToSend,
+    };
+    const conversation = [...messages, newUserMessage].map(toApiMessage);
+    const nextChatId = activeChatId || `${Date.now()}`;
+
+    setMessages((currentMessages) => [...currentMessages, newUserMessage]);
+    setActiveChatId(nextChatId);
+    saveChat({ id: nextChatId, messages: [...messages, newUserMessage] });
+    setShowSuggestions(false);
     setInputText('');
+    setSelectedImages([]);
     Keyboard.dismiss();
 
     try {
       setIsSending(true);
-      const answer = await askMeterAI(userMessage);
+      const answer = await askMeterAI(conversation);
 
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `${Date.now()}-assistant`,
-          role: 'assistant',
-          text: answer || 'Sorry, I could not get an answer right now.',
-        },
-      ]);
+      const assistantMessage = {
+        id: `${Date.now()}-assistant`,
+        role: 'assistant',
+        text: answer || 'Sorry, I could not get an answer right now.',
+      };
+      const updatedMessages = [...messages, newUserMessage, assistantMessage];
+      setMessages(updatedMessages);
+      saveChat({ id: nextChatId, messages: updatedMessages });
     } catch (error) {
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `${Date.now()}-error`,
-          role: 'assistant',
-          text: error.response?.data?.message || 'Failed to contact the meter assistant.',
-        },
-      ]);
+      const errorMessage = {
+        id: `${Date.now()}-error`,
+        role: 'assistant',
+        text: error.response?.data?.message || 'Failed to contact the meter assistant.',
+      };
+      const updatedMessages = [...messages, newUserMessage, errorMessage];
+      setMessages(updatedMessages);
+      saveChat({ id: nextChatId, messages: updatedMessages });
     } finally {
       setIsSending(false);
     }
@@ -118,12 +192,11 @@ export default function ChatbotScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
+      quality: 0.7,
+      base64: true,
     });
     if (!result.canceled) {
-      setSelectedImage(result.assets[0].uri);
+      setSelectedImages((current) => [...current, ...result.assets].slice(0, 4));
     }
   };
 
@@ -136,16 +209,18 @@ export default function ChatbotScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
+      allowsMultipleSelection: true,
+      selectionLimit: 4,
+      quality: 0.7,
+      base64: true,
     });
     if (!result.canceled) {
-      setSelectedImage(result.assets[0].uri);
+      setSelectedImages((current) => [...current, ...result.assets].slice(0, 4));
     }
   };
 
   const bottomOffset = insets.bottom + FLOATING_PADDING;
+  const chatComposerBottom = Math.max(bottomOffset, CHAT_COMPOSER_BOTTOM);
 
   // ✅ CORRECT FIX: 
   // When keyboardHeight = 0 (hidden): bottom = bottomOffset (floating position)
@@ -184,7 +259,11 @@ export default function ChatbotScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           // ✅ Add padding to push content above input bar when keyboard opens
-          { paddingBottom: isKeyboardVisible ? keyboardHeight + BAR_HEIGHT + 20 : 20 }
+          {
+            paddingBottom: isKeyboardVisible
+              ? keyboardHeight + BAR_HEIGHT + 20
+              : chatComposerBottom + BAR_HEIGHT + 20,
+          }
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -209,6 +288,17 @@ export default function ChatbotScreen() {
                       message.role === 'user' ? styles.userMessage : styles.assistantMessage,
                     ]}
                   >
+                    {message.images?.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.messageImages}>
+                        {message.images.map((image, index) => (
+                          <Image
+                            key={`${getImageUri(image)}-${index}`}
+                            source={{ uri: getImageUri(image) }}
+                            style={styles.messageImage}
+                          />
+                        ))}
+                      </ScrollView>
+                    )}
                     <Text
                       style={[
                         styles.messageText,
@@ -235,19 +325,19 @@ export default function ChatbotScreen() {
       <Animated.View style={[
         styles.bottomFixedContainer,
         { 
-          bottom: isKeyboardVisible ? keyboardHeight+ KEYBOARD_GAP : bottomOffset,
+          bottom: isKeyboardVisible ? keyboardHeight + KEYBOARD_GAP : chatComposerBottom,
           left: FLOATING_PADDING,
           right: FLOATING_PADDING,
         }
       ]}>
 
-        {!selectedImage && !showMenu && !isKeyboardVisible && (
+        {showSuggestions && selectedImages.length === 0 && !showMenu && !isKeyboardVisible && (
           <View style={styles.suggestionsContainer}>
             {suggestions.map((item, index) => (
               <TouchableOpacity 
                 key={index} 
                 style={styles.suggestionItem}
-                onPress={() => setInputText(item)}
+                onPress={() => handleSend(item)}
                 activeOpacity={0.7}
               >
                 <Text style={styles.suggestionText}>{item}</Text>
@@ -256,13 +346,20 @@ export default function ChatbotScreen() {
           </View>
         )}
 
-        {selectedImage && (
-          <View style={styles.imagePreviewContainer}>
-            <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
-            <TouchableOpacity style={styles.closeImageButton} onPress={() => setSelectedImage(null)}>
+        {selectedImages.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagePreviewList}>
+            {selectedImages.map((image, index) => (
+              <View key={`${image.uri}-${index}`} style={styles.imagePreviewContainer}>
+                <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.closeImageButton}
+                  onPress={() => setSelectedImages((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                >
               <Text style={styles.closeText}>×</Text>
             </TouchableOpacity>
-          </View>
+              </View>
+            ))}
+          </ScrollView>
         )}
 
         <View style={styles.inputContainer}>
@@ -283,21 +380,24 @@ export default function ChatbotScreen() {
             placeholder="Ask me anything..."
             placeholderTextColor="#999"
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={(text) => {
+              setInputText(text);
+              if (text.trim()) setShowSuggestions(false);
+            }}
             onFocus={() => setShowMenu(false)}
             multiline={false}
             returnKeyType="send"
-            onSubmitEditing={handleSend}
+            onSubmitEditing={() => handleSend()}
             blurOnSubmit={true}
           />
 
           <TouchableOpacity 
             style={[
               styles.sendButton,
-              (inputText.trim() === '' || isSending) && styles.sendButtonDisabled
+              ((inputText.trim() === '' && selectedImages.length === 0) || isSending) && styles.sendButtonDisabled
             ]} 
-            onPress={handleSend}
-            disabled={inputText.trim() === '' || isSending}
+            onPress={() => handleSend()}
+            disabled={(inputText.trim() === '' && selectedImages.length === 0) || isSending}
           >
             <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <Path d="M22 2L11 13M22 2L15 22L11 13M11 13L2 9L22 2" stroke="#FFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -395,6 +495,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  messageImages: {
+    maxHeight: 130,
+    marginBottom: 8,
+  },
+  messageImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 10,
+    marginRight: 8,
+  },
   userMessageText: {
     color: '#FFF',
   },
@@ -426,9 +536,14 @@ const styles = StyleSheet.create({
     width: 90, 
     height: 60, 
     borderRadius: 12, 
+    marginRight: 8,
     marginBottom: 8,
     overflow: 'hidden', 
     backgroundColor: '#E5E7EB' 
+  },
+  imagePreviewList: {
+    maxHeight: 68,
+    marginBottom: 8,
   },
   imagePreview: { 
     width: '100%', 

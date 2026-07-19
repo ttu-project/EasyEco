@@ -2,12 +2,11 @@
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Dimensions, SafeAreaView, ScrollView } from 'react-native';
+import { Image, SafeAreaView, ScrollView, useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
 import { summarizeUsageBill } from '../utils/billing';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { useLanguage } from '../context/LanguageContext';
 
 const ICON_MAP = {
   fridge: require('../../assets/Refigerator.png'),
@@ -59,8 +58,11 @@ const PAGES_DATA = [
 ];
 
 export default function Index() {
+  const { width: screenWidth } = useWindowDimensions();
+  const pageWidth = screenWidth - 40;
   const router = useRouter();
   const { getUsage, usageData, fetchUsage } = useUsage();
+  const { t } = useLanguage();
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
   const [currentUnits, setCurrentUnits] = useState(0);
@@ -76,7 +78,7 @@ export default function Index() {
     setActivePage(pageIndex);
     if (scrollViewRef.current) {
       scrollViewRef.current.scrollTo({
-        x: pageIndex * (SCREEN_WIDTH - 40),
+        x: pageIndex * pageWidth,
         animated: true,
       });
     }
@@ -84,7 +86,7 @@ export default function Index() {
 
   const handleScroll = (event) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const currentIndex = Math.round(contentOffsetX / (SCREEN_WIDTH - 40));
+    const currentIndex = Math.round(contentOffsetX / pageWidth);
     if (currentIndex !== activePage && currentIndex >= 0 && currentIndex < PAGES_DATA.length) {
       setActivePage(currentIndex);
     }
@@ -119,7 +121,7 @@ export default function Index() {
     // NO USAGE YET → Show "Add Usage Details"
     if (!specs || specs.length === 0) {
       return (
-        <Text style={styles.addActionText}>Add Usage Details</Text>
+        <Text style={styles.addActionText}>{t('addUsageDetails')}</Text>
       );
     }
 
@@ -169,7 +171,7 @@ export default function Index() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.mainContent}>
+      <ScrollView style={styles.mainContent} contentContainerStyle={styles.mainContentContainer} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
@@ -190,7 +192,7 @@ export default function Index() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.mainTitle}>Estimated Monthly Bill</Text>
+        <Text style={styles.mainTitle}>{t('estimatedMonthlyBill')}</Text>
 
        <TouchableOpacity
        activeOpacity={0.9}
@@ -201,25 +203,25 @@ export default function Index() {
          <View style={styles.billCard}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderText, { flex: 1.2 }]}></Text>
-            <Text style={styles.tableHeaderText}>Energy Usage</Text>
-            <Text style={styles.tableHeaderText}>Electricity Bill</Text>
+            <Text style={styles.tableHeaderText}>{t('energyUsage')}</Text>
+            <Text style={styles.tableHeaderText}>{t('electricityBill')}</Text>
           </View>
           <View style={styles.tableRow}>
-            <Text style={[styles.rowLabel, { flex: 1.2 }]}>Current Usage :</Text>
-            <Text style={styles.rowValue}>{currentUnits}  units</Text>
+            <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
+            <Text style={styles.rowValue}>{currentUnits}  {t('units')}</Text>
             <Text style={styles.rowValue}>{currentCost.toLocaleString()}MMK</Text>
           </View>
           <View style={[styles.tableRow, { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
-            <Text style={[styles.rowLabel, { flex: 1.2 }]}>Estimated Total :</Text>
-            <Text style={styles.rowValue}>{estimatedUnits} units</Text>
+            <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
+            <Text style={styles.rowValue}>{estimatedUnits} {t('units')}</Text>
             <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
           </View>
         </View>
 
        </TouchableOpacity>
-        <Text style={styles.sectionTitle}>Track Duration and Wattage</Text>
+        <Text style={styles.sectionTitle}>{t('trackDurationWattage')}</Text>
 
-        <View style={styles.swiperWrapper}>
+        <View style={[styles.swiperWrapper, { width: pageWidth }]}>
           <ScrollView
             ref={scrollViewRef}
             horizontal
@@ -229,7 +231,7 @@ export default function Index() {
             scrollEventThrottle={16}
           >
             {PAGES_DATA.map((pageItems, pageIndex) => (
-              <View key={pageIndex} style={styles.pageContainer}>
+              <View key={pageIndex} style={[styles.pageContainer, { width: pageWidth }]}>
                 <View style={styles.gridContainer}>
                   {pageItems.map((item) => (
                     <TouchableOpacity 
@@ -271,19 +273,19 @@ export default function Index() {
 
         <View style={styles.buttonWrapper}>
           <TouchableOpacity activeOpacity={0.8} style={styles.calculateButton} onPress={handleCalculateBillPress}>
-            <Text style={styles.buttonText}>Calculate Bill</Text>
+            <Text style={styles.buttonText}>{t('calculateBill')}</Text>
             {/* {renderCardContent(item)} */}
           </TouchableOpacity>
         </View>
-      </View>
-      <View style={styles.bottomBarPlaceholder} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  mainContent: { flex: 1, paddingHorizontal: 20, paddingTop: 35 },
+  mainContent: { flex: 1 },
+  mainContentContainer: { paddingHorizontal: 20, paddingTop: 35, paddingBottom: 120 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   logoContainer: {  width:60,height:60,borderRadius: 3, borderWidth: 2, borderColor: '#ffffff', justifyContent: 'center', alignItems: 'center' },
   notiCircle: {  backgroundColor: '#FFFFFF', borderRadius: 19, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#ffffff' },
@@ -295,8 +297,8 @@ const styles = StyleSheet.create({
   rowLabel: { color: '#FFF', fontSize: 14, fontWeight: '500' },
   rowValue: { flex: 1, color: '#FFF', fontSize: 14, fontWeight: '600', textAlign: 'right' },
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 14 },
-  swiperWrapper: { height: 330, width: SCREEN_WIDTH - 40 },
-  pageContainer: { width: SCREEN_WIDTH - 40 },
+  swiperWrapper: { height: 330 },
+  pageContainer: {},
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   applianceCard: { width: '48%', height: 150, backgroundColor: '#3B7AEE', borderRadius: 16, padding: 12, marginBottom: 16, justifyContent: 'space-between' },
   cardTop: { width: '100%' },
@@ -331,5 +333,4 @@ const styles = StyleSheet.create({
   buttonWrapper: { alignItems: 'center', justifyContent: 'center', width: '100%' },
   calculateButton: { backgroundColor: '#1958CE', borderRadius: 14, paddingVertical: 12, alignItems: 'center', width: '56%', marginBottom: 10 },
   buttonText: { color: '#FFF', fontSize: 18, fontWeight: '600' },
-  bottomBarPlaceholder: { height: 80, backgroundColor: '#FFF' },
 });

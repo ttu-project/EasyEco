@@ -1,16 +1,39 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, FlatList, Platform } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Alert, StyleSheet, Text, View, TouchableOpacity, SafeAreaView, FlatList, Platform } from 'react-native';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
+import { deleteChat, getChatHistory } from '../utils/chatHistory';
 
 export default function DrawerMenuScreen() {
   const router = useRouter();
-  const recentChats = [
-    { id: '1', title: 'Lower my electricity bill ...' },
-    { id: '2', title: 'Analyze my electricity bill ...' },
-    { id: '3', title: 'Analyze my electricity bill ...' },
-    { id: '4', title: 'Analyze my electricity bill ...' },
-  ];
+  const [recentChats, setRecentChats] = useState([]);
+
+  useFocusEffect(useCallback(() => {
+    getChatHistory().then(setRecentChats);
+  }, []));
+
+  const confirmDeleteChat = (chat) => {
+    Alert.alert(
+      'Delete chat?',
+      `Delete "${chat.title}" from your history?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteChat(chat.id);
+              setRecentChats((chats) => chats.filter((item) => item.id !== chat.id));
+            } catch {
+              Alert.alert('Unable to delete', 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
  
 
@@ -36,7 +59,7 @@ export default function DrawerMenuScreen() {
 
       {/* New Chat Button */}
       <TouchableOpacity style={styles.newChatButton}
-      onPress={() => router.push('../(main)/robot')}
+      onPress={() => router.replace({ pathname: '/(main)/robot', params: { newChat: Date.now().toString() } })}
       >
         {/* Chat bubble Icon (Svg) */}
         <Svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={styles.chatIcon}>
@@ -52,7 +75,12 @@ export default function DrawerMenuScreen() {
         data={recentChats}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.recentItem}>
+          <TouchableOpacity
+            style={styles.recentItem}
+            onPress={() => router.replace({ pathname: '/(main)/robot', params: { chatId: item.id } })}
+            onLongPress={() => confirmDeleteChat(item)}
+            delayLongPress={450}
+          >
             <Text style={styles.recentItemText} numberOfLines={1}>
               {item.title}
             </Text>
@@ -60,6 +88,7 @@ export default function DrawerMenuScreen() {
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={<Text style={styles.emptyText}>No chat history yet.</Text>}
       />
 
     </SafeAreaView>
@@ -137,4 +166,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
+  emptyText: { color: '#6B7280', fontSize: 15, textAlign: 'center', marginTop: 24 },
 });

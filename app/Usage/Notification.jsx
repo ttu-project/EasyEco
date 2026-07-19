@@ -1,453 +1,164 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  RefreshControl,
   Alert,
-  Image,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import Svg, { Path } from 'react-native-svg';
-import { AntDesign } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import {
+  deleteStoredNotification,
+  getNotificationHistory,
+  markNotificationRead,
+} from '../utils/notificationStore';
+import { useLanguage } from '../context/LanguageContext';
 
-// ============================================================
-// 🔧 CONFIGURATION
-// ============================================================
+function getGroupLabel(createdAt) {
+  const date = new Date(createdAt);
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const difference = Math.round((startOfToday - startOfDate) / 86400000);
 
-const USE_BACKEND = false;
-const API_BASE_URL = 'https://your-backend-url.com/api';
+  if (difference === 0) return 'Today';
+  if (difference === 1) return 'Yesterday';
+  if (date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth()) return 'This month';
+  return date.toLocaleDateString();
+}
 
-// ============================================================
-// 📦 DEMO DATA
-// ============================================================
+function getRelativeTime(createdAt) {
+  const difference = Date.now() - new Date(createdAt).getTime();
+  const minutes = Math.max(1, Math.floor(difference / 60000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return days < 7 ? `${days}d ago` : `${Math.floor(days / 7)}w ago`;
+}
 
-const DEMO_NOTIFICATIONS = [
-  {
-    id: '1',
-    icon: require('../../assets/dollar.png'),
-    title: 'Your estimated bill has been updated',
-    time: '1m ago',
-    date: 'Today',
-  },
-  {
-    id: '2',
-    icon: require('../../assets/bulb.png'),
-    title: 'Try reducing your air conditioner usage to lower your bill',
-    time: '2h ago',
-    date: 'Today',
-  },
-  {
-    id: '3',
-    icon: require('../../assets/Bell.png'),
-    title: 'Track your electricity usage to save energy',
-    time: '3h ago',
-    date: 'Today',
-  },
-  {
-    id: '4',
-    icon: require('../../assets/alert.png'),
-    title: 'Your electricity usage increased this month',
-    subtitle: 'Review your appliances to save energy',
-    time: '12h ago',
-    date: 'Today',
-  },
-  {
-    id: '5',
-    icon: require('../../assets/barchart.png'),
-    title: "Compare this month's usage with last month",
-    time: '2d ago',
-    date: 'Yesterday',
-  },
-  {
-    id: '6',
-    icon: require('../../assets/dollar.png'),
-    title: 'Your estimated bill has been updated',
-    time: '2d ago',
-    date: 'This month',
-  },
-  {
-    id: '7',
-    icon: require('../../assets/bulb.png'),
-    title: 'Try reducing your air conditioner usage to lower your bill',
-    time: '7d ago',
-    date: 'This month',
-  },
-  {
-    id: '8',
-    icon: require('../../assets/Bell.png'),
-    title: 'Track your electricity usage to save energy',
-    time: '2w ago',
-    date: 'This month',
-  },
-];
-
-// ============================================================
-// 🏠 COMPONENT
-// ============================================================
+function getIcon(type) {
+  if (type === 'auth') return 'person-circle-outline';
+  if (type === 'daily_tip') return 'bulb-outline';
+  return 'notifications-outline';
+}
 
 export default function NotificationPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
 
-  const fetchFromBackend = async () => {
-    try {
-      setError(null);
-      const response = await fetch(`${API_BASE_URL}/notifications`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-      const data = await response.json();
-      setNotifications(data.notifications || data || []);
-    } catch (err) {
-      setError(err.message || 'Failed to load notifications');
-    }
-  };
-
-  const loadDemoData = () => {
-    setNotifications(DEMO_NOTIFICATIONS);
-  };
-
-  const fetchNotifications = async () => {
-    setLoading(true);
-    if (USE_BACKEND) await fetchFromBackend();
-    else loadDemoData();
-    setLoading(false);
+  const loadNotifications = useCallback(async () => {
+    const items = await getNotificationHistory();
+    setNotifications(items);
     setRefreshing(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  useFocusEffect(useCallback(() => {
+    loadNotifications();
+  }, [loadNotifications]));
 
   const markAsRead = async (id) => {
-    if (USE_BACKEND) {
-      try {
-        await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (error) { console.error('Error marking as read:', error); }
-    }
-    setNotifications((prev) => prev.map((item) => item.id === id ? { ...item, read: true } : item));
+    const items = await markNotificationRead(id);
+    setNotifications(items);
   };
 
   const deleteNotification = (id) => {
-    Alert.alert(
-      'Delete Notification',
-      'Are you sure you want to delete this notification?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (USE_BACKEND) {
-              try {
-                await fetch(`${API_BASE_URL}/notifications/${id}`, {
-                  method: 'DELETE',
-                  headers: { 'Content-Type': 'application/json' },
-                });
-              } catch (error) { console.error('Error deleting:', error); }
-            }
-            setNotifications((prev) => prev.filter((item) => item.id !== id));
-          },
-        },
-      ]
-    );
+    Alert.alert(t('deleteNotification'), t('deleteNotificationMessage'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: async () => setNotifications(await deleteStoredNotification(id)),
+      },
+    ]);
   };
 
-  const groupNotificationsByDate = () => {
-    const groups = {};
-    notifications.forEach((item) => {
-      if (!groups[item.date]) groups[item.date] = [];
-      groups[item.date].push(item);
-    });
+  const groupedNotifications = notifications.reduce((groups, item) => {
+    const label = getGroupLabel(item.createdAt);
+    groups[label] = groups[label] || [];
+    groups[label].push(item);
     return groups;
-  };
-
-  useEffect(() => { fetchNotifications(); }, []);
-
-  const onRefresh = () => { setRefreshing(true); fetchNotifications(); };
-  const goBackToHome = () => { router.back(); };
-
-  const handleHelp = () => {
-    Alert.alert('Help', 'Here you can see all your notifications. Tap to mark as read, long press to delete.');
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color="#2167E1" />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (error && USE_BACKEND) {
-    return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <Text style={styles.errorIcon}>😕</Text>
-        <Text style={styles.errorTitle}>Something went wrong</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchNotifications}>
-          <Text style={styles.retryButtonText}>Try Again</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
-
-  if (notifications.length === 0) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <View style={styles.header}>
-          <TouchableOpacity onPress={goBackToHome} style={styles.headerButton}>
-            <AntDesign name="arrowleft" size={24} color="#0D2A4A" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          <TouchableOpacity onPress={handleHelp} style={styles.headerButton}>
-            <Text style={styles.helpText}>?</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={[styles.container, styles.centered]}>
-          <Text style={styles.emptyIcon}>🔔</Text>
-          <Text style={styles.emptyTitle}>No Notifications</Text>
-          <Text style={styles.emptySubtitle}>You're all caught up! Check back later.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const groupedData = groupNotificationsByDate();
+  }, {});
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
-      {/* Header */}
       <View style={styles.header}>
-       <TouchableOpacity style={styles.headerButton} onPress={() => router.push('/(main)')}>
-                 <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                   <Path d="M15 19L8 12L15 5" stroke="#0D2A4A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                 </Svg>
-               </TouchableOpacity>
-
-
-        <Text style={styles.headerTitle}>Notifications</Text>
-        
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={30} color="#0D2A4A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('notifications')}</Text>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {Object.entries(groupedData).map(([date, items]) => (
-          <View key={date} style={styles.section}>
-            <Text style={styles.sectionHeader}>{date}</Text>
-            {items.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.notificationCard}
-                activeOpacity={0.7}
-                onPress={() => markAsRead(item.id)}
-                onLongPress={() => deleteNotification(item.id)}
-              >
-                {/* Icon - no circle background */}
-                <View style={styles.iconWrapper}>
-                  <Image source={item.icon} style={styles.iconImage} />
-                </View>
-
-                {/* Content */}
-                <View style={styles.contentWrapper}>
-                  {/* Title + Time row */}
-                  <View style={styles.titleRow}>
-                    <Text style={styles.titleText} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.timeText}>{item.time}</Text>
+      {notifications.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="notifications-off-outline" size={54} color="#8E9DB0" />
+          <Text style={styles.emptyTitle}>{t('noNotifications')}</Text>
+          <Text style={styles.emptyText}>{t('notificationEmpty')}</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadNotifications(); }} />}
+        >
+          {Object.entries(groupedNotifications).map(([label, items]) => (
+            <View key={label} style={styles.section}>
+              <Text style={styles.sectionTitle}>{label}</Text>
+              {items.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.card, !item.read && styles.unreadCard]}
+                  onPress={() => markAsRead(item.id)}
+                  onLongPress={() => deleteNotification(item.id)}
+                >
+                  <View style={styles.iconBox}>
+                    <Ionicons name={getIcon(item.type)} size={27} color="#0D2A4A" />
                   </View>
-
-                  {/* Subtitle if exists */}
-                  {item.subtitle && (
-                    <Text style={styles.subtitleText}>{item.subtitle}</Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
+                  <View style={styles.cardContent}>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+                      <Text style={styles.time}>{getRelativeTime(item.createdAt)}</Text>
+                    </View>
+                    {!!item.body && <Text style={styles.body} numberOfLines={3}>{item.body}</Text>}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
-// ============================================================
-// 🎨 STYLES - Matching the screenshot exactly
-// ============================================================
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 30,
-  },
-  // Header
-  header: {
-   paddingHorizontal: 16,
-  paddingTop: 8,
-  paddingBottom: 12,
-   alignItems: 'flex-start', 
-  
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    marginTop: 15,
-    alignItems: 'flex-start',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,        // Bigger
-  fontWeight: '700',
-  color: '#2167E1',    // Blue like screenshot
-  marginTop: 4,
-  },
-  helpText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#0D2A4A',
-  },
-  scrollView: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0D2A4A',
-    marginBottom: 8,
-    paddingVertical: 4,
-  },
-  // ✅ Card - light gray background, no border
-  notificationCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#E8EDF3',  // ✅ Light gray like screenshot
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-  },
-  // ✅ Icon - no circle background, just the image
-  iconWrapper: {
-    width: 28,
-    height: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    marginTop: 2,
-  },
-  iconImage: {
-    width: 22,
-    height: 22,
-    resizeMode: 'contain',
-    tintColor: '#0D2A4A',  // ✅ Dark icon color
-  },
-  // ✅ Content layout
-  contentWrapper: {
-    flex: 1,
-  },
-  // ✅ Title row with time at top right
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  titleText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#0D2A4A',
-    lineHeight: 20,
-    flex: 1,
-    paddingRight: 8,
-  },
-  // ✅ Time at top right
-  timeText: {
-    fontSize: 12,
-    color: '#8E9DB0',
-    flexShrink: 0,
-  },
-  // ✅ Subtitle below title in lighter blue
-  subtitleText: {
-    fontSize: 13,
-    color: '#6B8FC7',  // ✅ Lighter blue color
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#6B7A8F',
-  },
-  errorIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0D2A4A',
-    marginBottom: 8,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#6B7A8F',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#2167E1',
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0D2A4A',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#8E9DB0',
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  header: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 14 },
+  backButton: { width: 36, height: 36, justifyContent: 'center', alignItems: 'flex-start' },
+  headerTitle: { marginTop: 14, color: '#2167E1', fontSize: 24, fontWeight: '700' },
+  scrollContent: { paddingHorizontal: 28, paddingBottom: 36 },
+  section: { marginBottom: 25 },
+  sectionTitle: { color: '#0D2A4A', fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  card: { flexDirection: 'row', backgroundColor: '#E8EDF3', borderRadius: 18, padding: 17, marginBottom: 14 },
+  unreadCard: { backgroundColor: '#E3EAF4' },
+  iconBox: { width: 52, alignItems: 'center', paddingTop: 3 },
+  cardContent: { flex: 1, paddingLeft: 12 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  title: { flex: 1, color: '#0D2A4A', fontSize: 16, lineHeight: 23, fontWeight: '600' },
+  time: { color: '#8E9DB0', fontSize: 13, paddingTop: 2 },
+  body: { color: '#55749D', fontSize: 14, lineHeight: 20, marginTop: 5 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 },
+  emptyTitle: { color: '#0D2A4A', fontSize: 19, fontWeight: '700', marginTop: 14 },
+  emptyText: { color: '#8E9DB0', fontSize: 14, textAlign: 'center', marginTop: 8 },
 });

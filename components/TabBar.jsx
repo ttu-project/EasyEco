@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Bot from '../assets/Bot.svg';
 import Graph from '../assets/Graph.svg';
 import Home from '../assets/Home.svg';
@@ -7,9 +8,7 @@ import Point from '../assets/Point.svg';
 import User from '../assets/User.svg';
 import Svg, { Path, Circle, Line, Polyline, Polygon } from 'react-native-svg';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FLOATING_PADDING = 20;
-const BAR_WIDTH = SCREEN_WIDTH - (FLOATING_PADDING * 2);
 
 // ==========================================================
 // SVG Icons နှင့် Background
@@ -28,8 +27,8 @@ const TabBgSvg = ({ width, height, colors }) => {
   `;
 
   return (
-    <Svg width={BAR_WIDTH} height={height} 
-    viewBox={`0 0 ${BAR_WIDTH} ${height}`}
+    <Svg width={width} height={height}
+    viewBox={`0 0 ${width} ${height}`}
     style={{ position: 'absolute', top: 0, left: 0 ,}}>
       <Path d={d} fill={colors.card} />
     </Svg>
@@ -46,6 +45,9 @@ export const UserIcon = ({ color, size }) => <User width={size} height={size} st
 // TabBar Component
 // ==========================================================
 export function TabBar({ state, descriptors, navigation }) {
+  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const barWidth = Math.max(0, screenWidth - (FLOATING_PADDING * 2));
   const colors = { primary: '#1d4ed8', inactive: '#1d4ed8', card: '#ededed', accent: '#1e40af' };
   const routes = state?.routes || [{ key: 'index', name: 'index' }, { key: 'analytics', name: 'analytics' }, { key: 'robot', name: 'robot' }, { key: 'finance', name: 'finance' }, { key: 'profile', name: 'profile' }];
   const activeIndex = state?.index ?? 0;
@@ -53,9 +55,9 @@ export function TabBar({ state, descriptors, navigation }) {
   const robotIndex = routes.findIndex(r => r.name.toLowerCase() === 'robot');
 
   return (
-    <View style={styles.outerContainer}>
+    <View style={[styles.outerContainer, { bottom: Math.max(FLOATING_PADDING, insets.bottom + 8) }]}>
       <View style={[styles.innerBarContainer, { height: barHeight }]}>
-        <TabBgSvg width={BAR_WIDTH} height={barHeight} colors={colors} />
+        <TabBgSvg width={barWidth} height={barHeight} colors={colors} />
         <View style={[styles.itemsContainer, { height: barHeight }]}>
           {routes.map((route, index) => {
             if (index === robotIndex) return <View key="spacer" style={styles.spacerItem} />;
@@ -76,7 +78,7 @@ export function TabBar({ state, descriptors, navigation }) {
           })}
         </View>
       </View>
-      <View style={[styles.centerButtonContainer, { left: BAR_WIDTH / 2 - 35 }]}>
+      <View style={[styles.centerButtonContainer, { left: barWidth / 2 - 35 }]}>
         <TouchableOpacity style={[styles.centerButton, { backgroundColor: colors.accent }]} onPress={() => navigation?.navigate('robot')}>
           <RobotIcon size={36} color="#ffffff" />
         </TouchableOpacity>
@@ -86,13 +88,13 @@ export function TabBar({ state, descriptors, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: { position: 'absolute', bottom: FLOATING_PADDING, left: FLOATING_PADDING, right: FLOATING_PADDING, backgroundColor: 'transparent', overflow: 'visible', elevation: 8,flex:1 },
+  outerContainer: { position: 'absolute', left: FLOATING_PADDING, right: FLOATING_PADDING, backgroundColor: 'transparent', overflow: 'visible', elevation: 8 },
   innerBarContainer: { position: 'relative', borderRadius: 35, overflow: 'hidden', backgroundColor: 'transparent',width: '100%' },
   itemsContainer: { flexDirection: 'row', width: '100%' },
   tabItem: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   spacerItem: { flex: 1 },
   iconContainer: { height: 32, width: 32, justifyContent: 'center', alignItems: 'center' },
-  centerButtonContainer: { position: 'absolute', width: 70, height: 70, zIndex: 10, justifyContent: 'center', left: (BAR_WIDTH / 2) - 35,alignItems: 'center'},
+  centerButtonContainer: { position: 'absolute', width: 70, height: 70, zIndex: 10, justifyContent: 'center', alignItems: 'center'},
   centerButton: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#ffffff',marginTop:-25},
   activeIndicator: { width: 18, height: 3, borderRadius: 1.5, marginTop: 4 }
 });

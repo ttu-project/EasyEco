@@ -6,13 +6,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
 import { useUsage } from './Usage/UsageContext';
 import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
+import { useLanguage } from './context/LanguageContext';
 
 // ===== COMPONENT =====
-
 export default function UsageDetail() {
   const router = useRouter();
   const { type } = useLocalSearchParams();
   const { getUsage } = useUsage();
+  const { t } = useLanguage();
   const {
     allItems,
     totalDailyUnits,
@@ -43,13 +44,13 @@ export default function UsageDetail() {
           </TouchableOpacity>
 
           {/* Title */}
-          <Text style={styles.title}>Average Total Consumption</Text>
+          <Text style={styles.title}>{t('averageTotalConsumption')}</Text>
 
           {/* Table Header */}
           <View style={styles.tableRow}>
-            <Text style={[styles.headerCell, { flex: 1.5 }]}>Devices</Text>
-            <Text style={[styles.headerCell, { flex: 1, textAlign: 'center' }]}>Units</Text>
-            <Text style={[styles.headerCell, { flex: 1, textAlign: 'right' }]}>Cost</Text>
+            <Text style={[styles.headerCell, { flex: 1.5 }]}>{t('devices')}</Text>
+            <Text style={[styles.headerCell, { flex: 1, textAlign: 'center' }]}>{t('units')}</Text>
+            <Text style={[styles.headerCell, { flex: 1, textAlign: 'right' }]}>{t('cost')}</Text>
           </View>
 
           <View style={styles.divider} />
@@ -59,7 +60,7 @@ export default function UsageDetail() {
             {displayItems.map((item) => (
               <View key={item.id} style={styles.tableRow}>
                 <Text style={[styles.deviceCell, { flex: 1.5 }]}>{item.name}({item.watt})</Text>
-                <Text style={[styles.unitCell, { flex: 1 }]}>{formatUnits(item.units)} units</Text>
+                <Text style={[styles.unitCell, { flex: 1 }]}>{formatUnits(item.units)} {t('units')}</Text>
                 <Text style={[styles.costCell, { flex: 1 }]}>{formatCost(item.cost)} MMK</Text>
               </View>
             ))}
@@ -69,14 +70,14 @@ export default function UsageDetail() {
 
           {/* Summary */}
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Current Usage :</Text>
-            <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} units</Text>
+            <Text style={styles.summaryLabel}>{t('currentUsage')}</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} {t('units')}</Text>
             <Text style={styles.summaryCost}>{formatCost(totalDailyCost)} MMK</Text>
           </View>
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Estimated Total :</Text>
-            <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} units</Text>
+            <Text style={styles.summaryLabel}>{t('estimatedTotal')}</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} {t('units')}</Text>
             <Text style={styles.summaryCost}>{formatCost(totalMonthlyCost)} MMK</Text>
           </View>
         </View>

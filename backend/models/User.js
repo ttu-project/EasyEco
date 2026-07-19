@@ -8,12 +8,10 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      required: true,
-      unique: true,
+      trim: true,
     },
     password: {
       type: String,
-      required: true,
     },
 
     email: {
@@ -34,6 +32,16 @@ const userSchema = new mongoose.Schema(
   {
     timestamps: true,
     }
+);
+
+// Social-auth users do not have a phone number. A partial unique index keeps
+// phone numbers unique without treating every missing value as the same `null`.
+userSchema.index(
+  { phoneNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { phoneNumber: { $type: 'string' } },
+  }
 );
 
 module.exports = mongoose.model('User', userSchema);

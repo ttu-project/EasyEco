@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native'
 
 import React, { useEffect, useState } from 'react';
 import {
- TouchableOpacity, FlatList, 
+ TouchableOpacity, ScrollView,
   TextInput, SafeAreaView, Alert 
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -95,6 +95,11 @@ const UsageTrackerComponent = ({ category, data }) => {
     
       return (
         <SafeAreaView style={styles.container}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => router.back()}
@@ -150,13 +155,9 @@ const UsageTrackerComponent = ({ category, data }) => {
             <Text style={styles.sectionTitle}>Current Usage</Text>
           </View>
     
-          <FlatList
-            data={currentUsage}
-            numColumns={2}
-            columnWrapperStyle={styles.columnWrapper}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <View style={styles.usageCard}>
+          <View style={styles.usageGrid}>
+            {currentUsage.map((item) => (
+              <View key={item.id} style={styles.usageCard}>
                 <View style={styles.usageTopRow}>
                   <Text style={styles.usageTextBold}>{item.watt}   {item.time}</Text>
                   <TouchableOpacity onPress={() => handleDelete(item.id)}>
@@ -165,8 +166,8 @@ const UsageTrackerComponent = ({ category, data }) => {
                 </View>
                 <Text style={styles.usageTextLight}>{item.name}</Text>
               </View>
-      )}
-          />
+            ))}
+          </View>
     
           {showPicker && (
             <DateTimePicker
@@ -188,6 +189,7 @@ const UsageTrackerComponent = ({ category, data }) => {
               }}
             />
           )}
+          </ScrollView>
         </SafeAreaView>
       );
     }
@@ -197,6 +199,7 @@ export default UsageTrackerComponent
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 30, paddingHorizontal:3,backgroundColor: '#f0f4f8' },
+  scrollContent: { paddingBottom: 32 },
   backButton: { marginBottom: 10 },
   headerContainer: { paddingHorizontal: 20 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', marginVertical: 15, color: '#333' },
@@ -206,7 +209,7 @@ const styles = StyleSheet.create({
   timePicker: { backgroundColor: 'white', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 },
   timeText: { fontSize: 12, color: '#333' },
   plus: { color: 'white', fontSize: 24, fontWeight: 'bold', marginLeft: 10 },
-  columnWrapper: { justifyContent: 'space-between', paddingHorizontal: 20 },
+  usageGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingHorizontal: 20 },
   usageCard: { backgroundColor: '#5c7cfa', padding: 12, borderRadius: 10, marginBottom: 10, width: '47%' },
   usageTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
   usageTextBold: { color: 'white', fontWeight: 'bold', FontSize: 11 },

@@ -24,36 +24,33 @@ export default function WelcomeScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#1658C3" />
 
 
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 24) }]}>
+        <View style={styles.hero}>
+          <View style={styles.circle}>
+            <Image
+              source={require('../../assets/Logoact2.png')}
+              style={styles.image}
+            />
+          </View>
 
-        <View style={styles.circle}>
-          <Image
-            source={require('../../assets/Logoact2.png')}
-            style={styles.image}
-          />
-        </View>
-
-        <Text style={styles.title}>
-          <Text style={styles.easyText}>EASY </Text>
-          <Text style={styles.ecoText}>Eco</Text>
-        </Text>
-
-
-        <TouchableOpacity onPress={() => router.push("/(auth)/signup")} style={styles.button}>
-          <Text style={styles.buttonText}>Get Started</Text>
-
-        </TouchableOpacity>
-
-        <View style={styles.footIndicator}>
-          <Text style={styles.footerColor}>
-            Already have an account?
+          <Text style={styles.title}>
+            <Text style={styles.easyText}>EASY </Text>
+            <Text style={styles.ecoText}>Eco</Text>
           </Text>
-          <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
-            <Text style={styles.Login}>Log in</Text>
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.homeIndicator} />
+        <View style={styles.actions}>
+          <TouchableOpacity onPress={() => router.push("/(auth)/signup")} style={styles.button}>
+            <Text style={styles.buttonText}>Get Started</Text>
+          </TouchableOpacity>
+
+          <View style={styles.footIndicator}>
+            <Text style={styles.footerColor}>Already have an account?</Text>
+            <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
+              <Text style={styles.Login}>Log in</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
     </View>
@@ -69,15 +66,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    //backgroundColor: '#001EFF',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
   },
+
+  hero: { alignItems: 'center', flex: 1, justifyContent: 'center' },
 
   circle: {
     backgroundColor: '#001EFF',
     width: 220,
     height: 220,
-    marginTop: 180,
     justifyContent: 'center',
     alignItems: 'center',
     hidden: 'overflow',
@@ -90,7 +89,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    marginTop: -25,
+    marginTop: -12,
     fontSize: 32,
     fontWeight: 'bold',
   },
@@ -104,9 +103,8 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    position: 'absolute',
-    bottom: 110,
-    width: 280,
+    width: '100%',
+    maxWidth: 360,
     height: 56,
     borderRadius: 28,
     backgroundColor: '#1658C3',
@@ -124,30 +122,10 @@ const styles = StyleSheet.create({
     color: "#1658C3",
   },
 
-  footerText: {
-    position: 'absolute',
-    bottom: 74,
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '400',
-  },
-
-
-
-  homeIndicator: {
-    position: 'absolute',
-    bottom: 18,
-    width: 110,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#FFFFFF',
-  },
-
+  actions: { width: '100%', alignItems: 'center', gap: 20 },
   footIndicator: {
-    position: 'absolute',
     flexDirection: 'row',
     color: '#1658C3',
-    bottom: 74,
     justifyContent: 'center',
     gap: 5
   },

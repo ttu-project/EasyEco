@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import messaging from '@react-native-firebase/messaging';
 
 const TOKEN_KEY = 'easyeco_auth_token';
 const USER_KEY = 'easyeco_auth_user';
@@ -21,6 +22,12 @@ export const getUser = async () => {
 };
 
 export const clearSession = async () => {
+  try {
+    await messaging().unsubscribeFromTopic('daily_energy_tips');
+  } catch (error) {
+    console.log('Daily tips unsubscribe error:', error);
+  }
+
   await SecureStore.deleteItemAsync(TOKEN_KEY);
   await SecureStore.deleteItemAsync(USER_KEY);
 };
