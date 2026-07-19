@@ -43,3 +43,5 @@ backend/.env.*
 # generated native folders
 /ios
 #/android
+# Firebase secret key
+backend/serviceAccountKEY.json
