@@ -392,7 +392,7 @@ export default function Index() {
                       styles.gridValueText,
                       { fontSize: nf(11) }
                     ]}>
-                      : {MONTHLY_BUDGET_GOAL}MMK
+                      : {MONTHLY_BUDGET_GOAL} MMK
                     </Text>
                   </View>
                 </View>

@@ -238,9 +238,7 @@ const parseTimeToHours = (timeStr) => {
         {/* Header */}
         <View style={styles.header}>
           <Image source={require('../../assets/Logoact2.png')} style={styles.logo} />
-          <TouchableOpacity onPress={() => router.push({ pathname: '../Usage/Notification'} )}>
-          <Image source={require('../../assets/Notifications.png')} style={styles.notiIcon} />
-          </TouchableOpacity>
+         
         </View>
 
         <Text style={styles.mainTitle}>Estimated Monthly Bill</Text>

@@ -1,258 +1,277 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   FlatList,
   Image,
-  Pressable,
   RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View
 } from 'react-native';
 import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
+import { format, addDays } from 'date-fns';
 
 const { width, height } = Dimensions.get('window');
 
-// ---------- API Configuration ----------
-const API_URL = 'https://your-api-endpoint.com/api/electricity';
+// ============================================================
+// API CONFIGURATION
+// ============================================================
+const API_BASE_URL = 'https://your-api-endpoint.com/api';
 
-// ---------- Dummy Data (12 months) ----------
-const dummyMonthlyData = [
-  { month: 'Jan', value: 45000 },
-  { month: 'Feb', value: 52000 },
-  { month: 'Mar', value: 38000 },
-  { month: 'Apr', value: 61000 },
-  { month: 'May', value: 49000 },
-  { month: 'Jun', value: 55000 },
-  { month: 'Jul', value: 42000 },
-  { month: 'Aug', value: 58000 },
-  { month: 'Sep', value: 63000 },
-  { month: 'Oct', value: 47000 },
-  { month: 'Nov', value: 51000 },
-  { month: 'Dec', value: 39000 },
+const API_ENDPOINTS = {
+  hourlyUsage: (date) => `${API_BASE_URL}/usage/hourly?date=${date}`,
+  monthlyHistory: `${API_BASE_URL}/history/monthly`,
+};
+
+// ============================================================
+// DEMO DATA - Used when API fails (no alerts)
+// ============================================================
+const DEMO_HOURLY = [
+  { hour: '12 AM', value: 0.01 }, { hour: '1 AM', value: 0.005 },
+  { hour: '2 AM', value: 0.002 }, { hour: '3 AM', value: 0.001 },
+  { hour: '4 AM', value: 0.001 }, { hour: '5 AM', value: 0.003 },
+  { hour: '6 AM', value: 0.02 }, { hour: '7 AM', value: 0.015 },
+  { hour: '8 AM', value: 0.01 }, { hour: '9 AM', value: 0.008 },
+  { hour: '10 AM', value: 0.012 }, { hour: '11 AM', value: 0.025 },
+  { hour: '12 PM', value: 0.045 }, { hour: '1 PM', value: 0.038 },
+  { hour: '2 PM', value: 0.03 }, { hour: '3 PM', value: 0.022 },
+  { hour: '4 PM', value: 0.018 }, { hour: '5 PM', value: 0.015 },
+  { hour: '6 PM', value: 0.035 }, { hour: '7 PM', value: 0.028 },
+  { hour: '8 PM', value: 0.02 }, { hour: '9 PM', value: 0.015 },
+  { hour: '10 PM', value: 0.01 }, { hour: '11 PM', value: 0.005 },
 ];
 
-// Dummy Usage History
-const dummyUsageHistory = [
-  { id: '1', units: 300, price: 30000, date: 'Monday, June 2, 2026' },
-  { id: '2', units: 250, price: 25000, date: 'Monday, June 1, 2026' },
-  { id: '3', units: 400, price: 40000, date: 'Sunday, May 31, 2026' },
-  { id: '4', units: 180, price: 18000, date: 'Saturday, May 30, 2026' },
-  { id: '5', units: 350, price: 35000, date: 'Friday, May 29, 2026' },
+const DEMO_HISTORY = [
+  { id: '1', month: 'June 2026', units: 2.7, price: 135 },
+  { id: '2', month: 'May 2026', units: 3, price: 150 },
+  { id: '3', month: 'April 2026', units: 3.5, price: 175 },
+  { id: '4', month: 'March 2026', units: 2.5, price: 125 },
+  { id: '5', month: 'February 2026', units: 3.2, price: 160 },
+  { id: '6', month: 'January 2026', units: 2.8, price: 140 },
 ];
 
-// ---------- API Functions ----------
-const fetchMonthlyData = async () => {
+// ============================================================
+// API FUNCTIONS
+// ============================================================
+const fetchHourlyData = async (dateString) => {
   try {
-    const response = await fetch(`${API_URL}/monthly`, {
+    const response = await fetch(API_ENDPOINTS.hourlyUsage(dateString), {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
-    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    return data;
+    return data.hourly || data;
   } catch (error) {
-    console.error('Monthly Data API Error:', error);
-    throw error;
+    console.log('API failed, using demo data');
+    return null; // Return null to trigger demo
   }
 };
 
-const fetchUsageHistory = async () => {
+const fetchMonthlyHistory = async () => {
   try {
-    const response = await fetch(`${API_URL}/history`, {
+    const response = await fetch(API_ENDPOINTS.monthlyHistory, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
-    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    return data;
+    return data.history || data;
   } catch (error) {
-    console.error('Usage History API Error:', error);
-    throw error;
+    console.log('API failed, using demo data');
+    return null;
   }
 };
 
-// ---------- Main Component ----------
+
+const HourlyChart = ({ data }) => {
+  const chartWidth = width - 64;
+  const chartHeight = 160; 
+
+  
+  const padding = { top: 15, bottom: 25, left: 60, right: 10 };
+  const innerWidth = chartWidth - padding.left - padding.right;
+  const innerHeight = chartHeight - padding.top - padding.bottom;
+
+  const maxValue = Math.max(...data.map(d => d.value)) * 1.2 || 0.1;
+  const barWidth = innerWidth / data.length * 0.6;
+  const barSpacing = (innerWidth - barWidth * data.length) / (data.length + 1);
+  const getBarHeight = (value) => (value / maxValue) * innerHeight;
+
+  
+  const yAxisValues = [maxValue, maxValue * 0.5, 0];
+
+  return (
+    <Svg width={chartWidth} height={chartHeight}>
+      
+      {yAxisValues.map((value, i) => {
+        const y = chartHeight - padding.bottom - getBarHeight(value);
+        const labelText = value === 0 ? '0' : `${value.toFixed(3)} unit`;
+
+        return (
+          <React.Fragment key={i}>
+            <SvgText 
+              x={padding.left - 8} 
+              y={y + 4} 
+              fontSize="9" 
+              fill="#888" 
+              textAnchor="end"
+            >
+              {labelText}
+            </SvgText>
+            <Line
+              x1={padding.left}
+              y1={y}
+              x2={chartWidth - padding.right}
+              y2={y}
+              stroke="#e0e0e0"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+            />
+          </React.Fragment>
+        );
+      })}
+
+    
+      {data.map((item, index) => {
+        const barHeight = getBarHeight(item.value);
+        const x = padding.left + barSpacing + index * (barWidth + barSpacing);
+        const y = chartHeight - padding.bottom - barHeight;
+        const showLabel = ['12 AM', '6 AM', '12 PM', '6 PM'].includes(item.hour);
+
+        return (
+          <React.Fragment key={index}>
+            <Rect 
+              x={x} 
+              y={y} 
+              width={barWidth} 
+              height={barHeight} 
+              fill="#3368C4" 
+              rx={2} 
+            />
+            {showLabel && (
+              <SvgText
+                x={x + barWidth / 2}
+                y={chartHeight - padding.bottom + 14}
+                fontSize="9" 
+                fill="#666" 
+                textAnchor="middle"
+              >
+                {item.hour}
+              </SvgText>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </Svg>
+  );
+};
+
+
 const ElectricityScreen = () => {
-  // ---- State Variables ----
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const [allMonthlyData, setAllMonthlyData] = useState([]);
-  const [displayData, setDisplayData] = useState([]);
-  const [usageHistory, setUsageHistory] = useState(dummyUsageHistory);
-  const [maxValue, setMaxValue] = useState(100000);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [selectedMonth, setSelectedMonth] = useState(null);
-  const [selectedValue, setSelectedValue] = useState(null);
 
-  // ---- Load All Data ----
-  const loadAllData = async () => {
+  
+  const [offset, setOffset] = useState(0);
+  const currentDate = addDays(new Date(), offset);
+  const dateString = format(currentDate, 'yyyy-MM-dd');
+
+  const getDisplayLabel = () => {
+    if (offset === 0) return 'Today';
+    if (offset === -1) return 'Yesterday';
+    return format(currentDate, 'MMMM d');
+  };
+
+  
+  const [hourlyData, setHourlyData] = useState([]);
+  const [totalUnits, setTotalUnits] = useState(0);
+  const [monthlyHistory, setMonthlyHistory] = useState([]);
+
+  
+  const loadData = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+
     try {
-      setError(null);
+      const hourlyResult = await fetchHourlyData(dateString);
 
-      const [monthlyResponse, historyResponse] = await Promise.all([
-        fetchMonthlyData(),
-        fetchUsageHistory(),
-      ]);
-
-      if (monthlyResponse && monthlyResponse.data && monthlyResponse.data.length > 0) {
-        setAllMonthlyData(monthlyResponse.data);
-        const firstSix = monthlyResponse.data.slice(0, 6);
-        setDisplayData(firstSix);
-        const max = Math.max(...firstSix.map((item) => item.value));
-        setMaxValue(max > 0 ? max * 1.2 : 100000);
+      if (hourlyResult && hourlyResult.length > 0) {
+        setHourlyData(hourlyResult);
+        const total = hourlyResult.reduce((sum, item) => sum + (item.value || 0), 0);
+        setTotalUnits(total);
       } else {
-        setAllMonthlyData(dummyMonthlyData);
-        const firstSix = dummyMonthlyData.slice(0, 6);
-        setDisplayData(firstSix);
-        setMaxValue(100000);
+        const variation = 1 + (Math.abs(offset) * 0.15);
+        const adjusted = DEMO_HOURLY.map(h => ({
+          ...h,
+          value: Math.max(0.001, h.value * variation)
+        }));
+        setHourlyData(adjusted);
+        const total = adjusted.reduce((sum, item) => sum + item.value, 0);
+        setTotalUnits(total);
       }
 
-      if (historyResponse && historyResponse.data && historyResponse.data.length > 0) {
-        const latestFive = historyResponse.data.slice(0, 5);
-        setUsageHistory(latestFive);
-      } else {
-        setUsageHistory(dummyUsageHistory);
+      // Fetch monthly history (only if empty or refresh)
+      if (monthlyHistory.length === 0 || isRefresh) {
+        const historyResult = await fetchMonthlyHistory();
+        if (historyResult && historyResult.length > 0) {
+          setMonthlyHistory(historyResult);
+        } else {
+          setMonthlyHistory(DEMO_HISTORY);
+        }
       }
+
     } catch (err) {
-      console.error('Load Data Error:', err);
-      setError(err.message);
-      setAllMonthlyData(dummyMonthlyData);
-      const firstSix = dummyMonthlyData.slice(0, 6);
-      setDisplayData(firstSix);
-      setMaxValue(100000);
-      setUsageHistory(dummyUsageHistory);
-
-      Alert.alert(
-        'Error',
-        'Failed to load data. Showing demo data.',
-        [{ text: 'OK' }]
-      );
+      console.error('Error:', err);
+      // Use demo data on any error
+      setHourlyData(DEMO_HOURLY);
+      setTotalUnits(DEMO_HOURLY.reduce((sum, item) => sum + item.value, 0));
+      setMonthlyHistory(DEMO_HISTORY);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  // ---- Component Mount ----
   useEffect(() => {
-    loadAllData();
-  }, []);
+    loadData();
+  }, [offset]);
 
-  // ---- Page Change ----
-  const changePage = (page) => {
-    setCurrentPage(page);
-
-    if (page === 0) {
-      const firstSix = allMonthlyData.slice(0, 6);
-      setDisplayData(firstSix);
-      const max = Math.max(...firstSix.map((item) => item.value));
-      setMaxValue(max > 0 ? max * 1.2 : 100000);
-    } else {
-      const lastSix = allMonthlyData.slice(6, 12);
-      setDisplayData(lastSix);
-      const max = Math.max(...lastSix.map((item) => item.value));
-      setMaxValue(max > 0 ? max * 1.2 : 100000);
-    }
-    setSelectedMonth(null);
-    setSelectedValue(null);
+  const goPrev = () => setOffset(prev => prev - 1);
+  const goNext = () => {
+    if (offset < 0) setOffset(prev => prev + 1);
   };
 
-  // ---- Month Select ----
-  const handleMonthSelect = (month, value) => {
-    setSelectedMonth(month);
-    setSelectedValue(value);
-    console.log(`Selected: ${month} = ${value} MMK`);
-  };
-
-  // ---- Pull to Refresh ----
   const onRefresh = () => {
     setRefreshing(true);
-    loadAllData();
+    loadData(true);
   };
 
-  // ---- Format Currency ----
-  const formatCurrency = (value) => {
-    if (value >= 100000) {
-      return `${(value / 1000).toFixed(0)}k`;
-    } else if (value >= 1000) {
-      return `${(value / 1000).toFixed(1)}k`;
-    }
-    return value.toString();
-  };
+  // Render
+  const renderHistoryItem = ({ item }) => (
+    <View style={styles.historyCard}>
+      <View style={styles.historyCardLeft}>
+        <Text style={styles.historyCardMonth}>{item.month}</Text>
+        <Text style={styles.historyCardUnits}>{item.units} units</Text>
+      </View>
+      <Text style={styles.historyCardPrice}>{item.price} MMK</Text>
+    </View>
+  );
 
-  // ---- Get Current Month ----
-  const getCurrentMonth = () => {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonthIndex = new Date().getMonth();
-    return monthNames[currentMonthIndex];
-  };
-
-  // ---- Loading State ----
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2196F3" />
-        <Text style={styles.loadingText}>Loading electricity data...</Text>
+        <ActivityIndicator size="large" color="#3368C4" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
 
-  // ---- Chart Settings ----
-  const chartWidth = width - 40;
-  const chartHeight = 220;
-  const padding = { top: 30, bottom: 30, left: 35, right: 15 };
-  const innerWidth = chartWidth - padding.left - padding.right;
-  const innerHeight = chartHeight - padding.top - padding.bottom;
-
-  const chartMaxValue = maxValue > 0 ? maxValue : 100000;
-
-  const barWidth = innerWidth / displayData.length * 0.6;
-  const barSpacing = (innerWidth - barWidth * displayData.length) / (displayData.length + 1);
-
-  const getBarHeight = (value) => (value / chartMaxValue) * innerHeight;
-
-  const currentMonth = getCurrentMonth();
-
-  // ---- Render Usage History Item ----
-  const renderHistoryItem = ({ item, index }) => {
-    return (
-      <View style={styles.historyItemWrapper}>
-        <View style={styles.historyItem}>
-          <Text style={styles.historyDate}>{item.date || 'Unknown date'}</Text>
-          <View style={styles.historyRow}>
-            <Text style={styles.historyUnits}>{item.units || 0} units</Text>
-            <Text style={styles.historyPrice}>
-              {(item.price || 0).toLocaleString()} MMK
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  // ---- Render Empty State ----
-  const renderEmptyHistory = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>📭</Text>
-      <Text style={styles.emptyTitle}>No Usage History</Text>
-      <Text style={styles.emptyText}>No electricity usage records found.</Text>
-    </View>
-  );
-
   return (
-    <SafeAreaView 
-    edges={['top']}  
-    style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -270,130 +289,56 @@ const ElectricityScreen = () => {
           </View>
         </View>
 
-        {/* Selected Month Info */}
-        {selectedMonth && (
-          <View style={styles.selectedInfoContainer}>
-            <Text style={styles.selectedInfoText}>
-              {selectedMonth}: {selectedValue?.toLocaleString()} MMK
-            </Text>
+        {/* ========== COMPACT DAILY CARD ========== */}
+        <View style={styles.dailyCard}>
+          <Text style={styles.dailyCardTitle}>Daily Energy Usage Analytics</Text>
+
+          {/* Navigation */}
+          <View style={styles.navRow}>
+            <TouchableOpacity onPress={goPrev} style={styles.navArrowBtn}>
+              <Text style={styles.navArrow}>{"<"}</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.navDateText}>{getDisplayLabel()}</Text>
+
+            <TouchableOpacity 
+              onPress={goNext}
+              disabled={offset === 0}
+              style={styles.navArrowBtn}
+            >
+              <Text style={[styles.navArrow, offset === 0 && styles.navArrowDisabled]}>
+                {">"}
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {/* Bar Chart with Title inside - Left aligned */}
-        <View style={styles.chartBorderContainer}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Monthly Electricity Expenses</Text>
+          {/* Compact Chart */}
+          <View style={styles.chartWrapper}>
+            <HourlyChart data={hourlyData} />
           </View>
-          <View style={styles.chartContainer}>
-            <Svg width={chartWidth} height={chartHeight}>
-              {/* Y-axis Labels */}
-              {[chartMaxValue, chartMaxValue * 0.5, 0].map((value) => {
-                const y = chartHeight - padding.bottom - getBarHeight(value);
-                return (
-                  <React.Fragment key={value}>
-                    <SvgText x={padding.left - 8} y={y + 3} fontSize="10" fill="#666" textAnchor="end">
-                      {formatCurrency(value)}
-                    </SvgText>
-                    <Line
-                      x1={padding.left}
-                      y1={y}
-                      x2={chartWidth - padding.right}
-                      y2={y}
-                      stroke="#f0f0f0"
-                      strokeWidth="1"
-                      strokeDasharray="3"
-                    />
-                  </React.Fragment>
-                );
-              })}
 
-              {/* Bars and X-axis Labels */}
-              {displayData.map((item, index) => {
-                const barHeight = getBarHeight(item.value);
-                const x = padding.left + barSpacing + index * (barWidth + barSpacing);
-                const y = chartHeight - padding.bottom - barHeight;
-                const isSelected = selectedMonth === item.month;
-                const isCurrentMonth = item.month === currentMonth;
-
-                // Color: Current month = #3368C4, Other months = #C5D2E5
-                const barColor = isCurrentMonth ? '#3368C4' : '#C5D2E5';
-
-                return (
-                  <React.Fragment key={item.month || index}>
-                    <Rect
-                      x={x}
-                      y={y}
-                      width={barWidth}
-                      height={barHeight}
-                      fill={isSelected ? '#FF6B6B' : barColor}
-                      rx={4}
-                      onPress={() => handleMonthSelect(item.month, item.value)}
-                    />
-                    <SvgText
-                      x={x + barWidth / 2}
-                      y={y - 5}
-                      fontSize="9"
-                      fill="#333"
-                      textAnchor="middle"
-                    >
-                      {formatCurrency(item.value)}
-                    </SvgText>
-                    <SvgText
-                      x={x + barWidth / 2}
-                      y={chartHeight - padding.bottom + 18}
-                      fontSize="10"
-                      fill={isSelected ? '#FF6B6B' : '#666'}
-                      textAnchor="middle"
-                      fontWeight={isSelected ? 'bold' : 'normal'}
-                      onPress={() => handleMonthSelect(item.month, item.value)}
-                    >
-                      {item.month || `M${index + 1}`}
-                    </SvgText>
-                  </React.Fragment>
-                );
-              })}
-            </Svg>
+          {/* Footer */}
+          <View style={styles.cardFooter}>
+            <View style={styles.usageLabel}>
+              <View style={styles.greenDot} />
+              <Text style={styles.usageText}>Usage</Text>
+            </View>
+            <Text style={styles.totalUnits}>{totalUnits.toFixed(2)} units</Text>
           </View>
         </View>
 
-        {/* Page Toggle Buttons - Replaces CustomSeekBar */}
-        <View style={styles.pageToggleContainer}>
-          <Pressable 
-            style={[styles.pageToggleButton, currentPage === 0 && styles.pageToggleButtonActive]}
-            onPress={() => changePage(0)}
-          >
-            <Text style={[styles.pageToggleText, currentPage === 0 && styles.pageToggleTextActive]}>
-              Jan - Jun
-            </Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.pageToggleButton, currentPage === 1 && styles.pageToggleButtonActive]}
-            onPress={() => changePage(1)}
-          >
-            <Text style={[styles.pageToggleText, currentPage === 1 && styles.pageToggleTextActive]}>
-              Jul - Dec
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Usage History */}
-        <View style={styles.historyContainer}>
+        {/* ========== USAGE HISTORY ========== */}
+        <View style={styles.historySection}>
           <Text style={styles.historyTitle}>Usage History</Text>
-
-          {usageHistory && usageHistory.length > 0 ? (
-            <FlatList
-              data={usageHistory}
-              renderItem={renderHistoryItem}
-              keyExtractor={(item, index) => item.id || item._id || `history-${index}`}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-            />
-          ) : (
-            renderEmptyHistory()
-          )}
+          <FlatList
+            data={monthlyHistory}
+            renderItem={renderHistoryItem}
+            keyExtractor={(item) => item.id}
+            scrollEnabled={false}
+            showsVerticalScrollIndicator={false}
+          />
         </View>
 
-        {/* Navigation Bar Spacer */}
         <View style={styles.navBarSpacer} />
       </ScrollView>
     </SafeAreaView>
@@ -402,202 +347,150 @@ const ElectricityScreen = () => {
 
 // ---------- Styles ----------
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 80,
-  },
+  safeArea: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#fff' },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 80 },
 
-  // Loading
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+  loadingContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#fff' 
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
-  },
+  loadingText: { marginTop: 12, fontSize: 16, color: '#666' },
 
   // Logo
-  logoContainer: {
-    alignItems: 'flex-start',
+  logoContainer: { alignItems: 'flex-start', marginBottom: 12 },
+  logoCircle: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 24, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    overflow: 'hidden' 
+  },
+  logoImage: { width: 42, height: 42 },
+
+  // ========== COMPACT DAILY CARD ==========
+  dailyCard: {
+    backgroundColor: '#F4F7FC',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  dailyCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 8,
   },
-  logoCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  logoImage: {
-    width: 65,
-    height: 65,
-  },
 
-  // Selected Info
-  selectedInfoContainer: {
-    backgroundColor: '#fff3e0',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 12,
+  // Navigation
+  navRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ffcc80',
+    marginBottom: 8,
   },
-  selectedInfoText: {
-    fontSize: 14,
-    color: '#e65100',
-    fontWeight: '600',
+  navArrowBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 36,
+    alignItems: 'center',
   },
-
-  // Chart Border Container with Title - Left aligned
-  chartBorderContainer: {
-    backgroundColor: '#fafafa',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    marginBottom: 4,
-  },
-  chartHeader: {
-    alignItems: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 4,
-  },
-  chartTitle: {
-    fontSize: 16,
+  navArrow: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
   },
-  chartContainer: {
-    alignItems: 'center',
-    padding: 2,
+  navArrowDisabled: {
+    color: '#ccc',
   },
-
-  // Page Toggle Buttons (Replaces CustomSeekBar)
-  pageToggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 12,
-    marginBottom: 12,
-    paddingHorizontal: 4,
-    gap: 10,
-  },
-  pageToggleButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    backgroundColor: '#E3EFFF',
-    borderWidth: 1,
-    borderColor: '#BBDEFB',
-  },
-  pageToggleButtonActive: {
-    backgroundColor: '#3368C4',
-    borderColor: '#3368C4',
-  },
-  pageToggleText: {
-    fontSize: 14,
-    color: '#3368C4',
-    fontWeight: '500',
-  },
-  pageToggleTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-
-  // History
-  historyContainer: {
-    marginTop: 5,
-    marginBottom: 5,
-  },
-  historyTitle: {
+  navDateText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 12,
   },
 
-  historyItemWrapper: {
+  // Chart - COMPACT
+  chartWrapper: {
+    marginBottom: 4,
+  },
+
+  // Footer
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    marginTop: 2,
+  },
+  usageLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  greenDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#15EA3E',
+    marginRight: 6,
+  },
+  usageText: {
+    fontSize: 12,
+    color: '#333',
+    fontWeight: '500',
+  },
+  totalUnits: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+
+  // ========== HISTORY ==========
+  historySection: {
+    marginTop: 4,
+    marginBottom: 5,
+  },
+  historyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 10,
   },
-  historyItem: {
+  historyCard: {
     backgroundColor: '#CDDFFC',
-    borderRadius: 16,
+    borderRadius: 14,
     paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-
-  historyDate: {
-    fontFamily: 'Roboto-Bold',
-    fontWeight: '700',
-    fontSize: 20,
-    color: '#333',
-    marginBottom: 6,
-  },
-
-  historyRow: {
+    paddingHorizontal: 14,
+    marginBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
-  historyUnits: {
-    fontFamily: 'Roboto-Regular',
-    fontWeight: '400',
+  historyCardLeft: {
+    flex: 1,
+  },
+  historyCardMonth: {
     fontSize: 14,
-    color: '#333',
-  },
-
-  historyPrice: {
-    fontFamily: 'Roboto-Regular',
-    fontWeight: '400',
-    fontSize: 14,
-    color: '#333',
-  },
-
-  // Empty State
-  emptyContainer: {
-    paddingVertical: 40,
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 10,
-  },
-  emptyTitle: {
-    fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  emptyText: {
+  historyCardUnits: {
+    fontSize: 12,
+    color: '#666',
+  },
+  historyCardPrice: {
     fontSize: 14,
-    color: '#999',
+    fontWeight: '600',
+    color: '#333',
   },
 
-  // Navigation Bar Spacer
-  navBarSpacer: {
-    height: 20,
-  },
+  navBarSpacer: { height: 20 },
 });
 
 export default ElectricityScreen;
