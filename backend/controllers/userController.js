@@ -147,10 +147,6 @@ const registerUser = async (req, res) => {
   try {
     const { name, phoneNumber, email, password } = req.body;
 
-    if (!email?.trim()) {
-      return res.status(400).json({ message: 'Email is required for password recovery.' });
-    }
-
     const userExists = await User.findOne({ phoneNumber });
 
     if (userExists) {
@@ -159,9 +155,12 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const emailExists = await User.findOne({ email: email.trim().toLowerCase() });
-    if (emailExists) {
-      return res.status(400).json({ message: 'That email address is already in use.' });
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (normalizedEmail) {
+      const emailExists = await User.findOne({ email: normalizedEmail });
+      if (emailExists) {
+        return res.status(400).json({ message: 'That email address is already in use.' });
+      }
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -171,7 +170,7 @@ const registerUser = async (req, res) => {
     const user = await User.create({
       name,
       phoneNumber,
-      email: email.trim().toLowerCase(),
+      ...(normalizedEmail && { email: normalizedEmail }),
       password: hashedPassword,
     });
 

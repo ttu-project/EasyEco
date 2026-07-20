@@ -55,8 +55,6 @@ export default function SignUpScreen() {
   const [phoneNumber, setPhoneNumber] =
     useState('');
 
-  const [email, setEmail] = useState('');
-
   const [password, setPassword] =
     useState('');
 
@@ -201,10 +199,6 @@ export default function SignUpScreen() {
         );
       }
 
-      if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-        return Alert.alert('Error', 'Please enter a valid email address');
-      }
-
       if (password.length < 6) {
         return Alert.alert(
           'Error',
@@ -235,7 +229,6 @@ export default function SignUpScreen() {
         {
           name: username,
           phoneNumber,
-          email,
           password,
         },
         {
@@ -328,15 +321,6 @@ export default function SignUpScreen() {
                 setPhoneNumber
               }
               keyboardType="phone-pad"
-            />
-
-            <CustomInput
-              label="Email"
-              placeholder="Enter email address"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
             />
 
             <CustomInput
