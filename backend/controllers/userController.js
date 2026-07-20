@@ -1,11 +1,10 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { getAuth } = require('firebase-admin/auth');
 const { randomUUID } = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
-require('../config/firebaseAdmin');
+const PasswordResetSession = require('../models/PasswordResetSession');
 
 const axios = require('axios');
 
@@ -24,6 +23,9 @@ const phoneNumberVariants = (phoneNumber) => {
 };
 
 const PASSWORD_RESET_TTL = '30m';
+const PHONE_RESET_TOKEN_TTL = '10m';
+const OTP_REQUEST_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_VERIFY_ATTEMPTS = 5;
 
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 10 * 1024 * 1024;
 
@@ -79,6 +81,65 @@ const sendPasswordResetEmail = async (email, resetToken) => {
     },
     { headers: { Authorization: `Bearer ${RESEND_API_KEY}` } }
   );
+};
+
+const getSmsPohAccessToken = () => {
+  const { SMSPOH_API_KEY, SMSPOH_API_SECRET } = process.env;
+  if (!SMSPOH_API_KEY || !SMSPOH_API_SECRET) {
+    const error = new Error('SMS password reset is not configured on the server.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  return Buffer.from(`${SMSPOH_API_KEY}:${SMSPOH_API_SECRET}`).toString('base64');
+};
+
+const requestSmsPohOtp = async (phoneNumber) => {
+  const senderId = process.env.SMSPOH_SENDER_ID;
+  const brand = process.env.SMSPOH_BRAND || senderId;
+  const ttl = Number(process.env.SMSPOH_OTP_TTL_SECONDS || 120);
+  const pinLength = Number(process.env.SMSPOH_OTP_PIN_LENGTH || 6);
+  if (!senderId || !brand) {
+    const error = new Error('SMS sender settings are not configured on the server.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  if (!Number.isInteger(ttl) || ttl < 60 || ttl > 3600 || !Number.isInteger(pinLength) || pinLength < 4 || pinLength > 8) {
+    const error = new Error('SMS OTP settings are invalid on the server.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const response = await axios.post('https://v3.smspoh.com/api/otp/request', null, {
+    params: {
+      from: senderId,
+      to: phoneNumber,
+      brand,
+      ttl,
+      pinLength,
+      maxInvalidAttempts: OTP_MAX_VERIFY_ATTEMPTS,
+      accessToken: getSmsPohAccessToken(),
+    },
+    timeout: 15000,
+  });
+
+  if (!response.data?.requestId) {
+    throw new Error('SMS provider did not return an OTP request ID.');
+  }
+
+  return response.data;
+};
+
+const verifySmsPohOtp = async (requestId, code) => {
+  await axios.post('https://v3.smspoh.com/api/otp/verify', null, {
+    params: {
+      requestId,
+      code,
+      accessToken: getSmsPohAccessToken(),
+    },
+    timeout: 15000,
+  });
 };
 
 // Register
@@ -310,40 +371,116 @@ const changePassword = async (req, res) => {
   }
 };
 
-// Verify a Firebase Phone Auth result and issue a short-lived reset token.
-const verifyResetPhone = async (req, res) => {
+// Send an SMSPoh-managed OTP for a password reset. The provider credentials
+// remain on this server and the returned request ID is never trusted by itself.
+const requestPasswordResetOtp = async (req, res) => {
   try {
-    const { idToken } = req.body;
+    const phoneNumber = normaliseMyanmarPhone(req.body.phoneNumber);
 
-    if (!idToken) {
-      return res.status(400).json({ message: 'Firebase verification token is required.' });
-    }
-
-    const decodedToken = await getAuth().verifyIdToken(idToken);
-    const phoneNumber = normaliseMyanmarPhone(decodedToken.phone_number);
-
-    if (!phoneNumber) {
-      return res.status(400).json({ message: 'The verified Firebase account has no phone number.' });
+    if (!/^\+\d{8,15}$/.test(phoneNumber)) {
+      return res.status(400).json({ message: 'Use a valid international phone number.' });
     }
 
     const user = await User.findOne({
       phoneNumber: { $in: phoneNumberVariants(phoneNumber) },
     });
 
-    if (!user) {
-      return res.status(404).json({ message: 'No EasyEco account exists for this phone number.' });
+    // Keep the response generic so callers cannot use this endpoint to find
+    // whether a phone number is registered. The app may still show its code UI.
+    if (!user?.password) {
+      return res.json({
+        message: 'If this phone number belongs to an EasyEco account, a verification code has been sent.',
+        resetSessionId: randomUUID(),
+      });
     }
 
+    const previousSession = await PasswordResetSession.findOne({
+      userId: user._id,
+      phoneNumber,
+      verifiedAt: null,
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+
+    if (previousSession && Date.now() - previousSession.createdAt.getTime() < OTP_REQUEST_COOLDOWN_MS) {
+      return res.status(429).json({
+        message: 'Please wait a minute before requesting another code.',
+      });
+    }
+
+    const smsPohOtp = await requestSmsPohOtp(phoneNumber);
+    const providerExpiry = new Date(smsPohOtp.expireAt);
+    const expiresAt = Number.isNaN(providerExpiry.getTime())
+      ? new Date(Date.now() + 2 * 60 * 1000)
+      : providerExpiry;
+    const sessionId = randomUUID();
+
+    await PasswordResetSession.create({
+      sessionId,
+      userId: user._id,
+      phoneNumber,
+      smsPohRequestId: String(smsPohOtp.requestId),
+      expiresAt,
+    });
+
+    return res.json({
+      message: 'If this phone number belongs to an EasyEco account, a verification code has been sent.',
+      resetSessionId: sessionId,
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+
+    return res.status(502).json({
+      message: 'Could not send a verification code. Please try again later.',
+    });
+  }
+};
+
+const verifyResetOtp = async (req, res) => {
+  try {
+    const { resetSessionId, code } = req.body;
+
+    if (!resetSessionId || !/^\d{4,10}$/.test(String(code || ''))) {
+      return res.status(400).json({ message: 'A valid verification code is required.' });
+    }
+
+    const session = await PasswordResetSession.findOne({
+      sessionId: resetSessionId,
+      verifiedAt: null,
+      usedAt: null,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!session || session.verifyAttempts >= OTP_MAX_VERIFY_ATTEMPTS) {
+      return res.status(401).json({ message: 'The code is invalid or has expired. Please request a new one.' });
+    }
+
+    session.verifyAttempts += 1;
+    await session.save();
+
+    try {
+      await verifySmsPohOtp(session.smsPohRequestId, String(code));
+    } catch (error) {
+      return res.status(401).json({ message: 'The code is invalid or has expired. Please request a new one.' });
+    }
+
+    const resetTokenId = randomUUID();
     const resetToken = jwt.sign(
-      { id: user._id, purpose: 'password-reset' },
+      { id: session.userId, purpose: 'password-reset', sessionId: session.sessionId, jti: resetTokenId },
       process.env.JWT_SECRET,
-      { expiresIn: '10m' }
+      { expiresIn: PHONE_RESET_TOKEN_TTL }
     );
+
+    session.verifiedAt = new Date();
+    session.resetTokenId = resetTokenId;
+    session.expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await session.save();
 
     return res.json({ resetToken });
   } catch (error) {
     return res.status(401).json({
-      message: 'Phone verification failed. Please request a new code.',
+      message: 'Verification failed. Please request a new code.',
     });
   }
 };
@@ -363,6 +500,27 @@ const resetPassword = async (req, res) => {
     const payload = jwt.verify(resetToken, process.env.JWT_SECRET);
     if (payload.purpose !== 'password-reset') {
       return res.status(401).json({ message: 'Invalid password reset request.' });
+    }
+
+    // Phone-reset tokens are single-use. Email-reset tokens retain their
+    // existing behavior until the email flow is migrated to the same store.
+    if (payload.sessionId || payload.jti) {
+      const consumedSession = await PasswordResetSession.findOneAndUpdate(
+        {
+          sessionId: payload.sessionId,
+          userId: payload.id,
+          resetTokenId: payload.jti,
+          verifiedAt: { $ne: null },
+          usedAt: null,
+          expiresAt: { $gt: new Date() },
+        },
+        { $set: { usedAt: new Date() } },
+        { new: true }
+      );
+
+      if (!consumedSession) {
+        return res.status(401).json({ message: 'This password reset request has expired or was already used.' });
+      }
     }
 
     const user = await User.findById(payload.id);
@@ -485,7 +643,8 @@ module.exports = {
   requestPasswordReset,
   updateProfile,
   changePassword,
-  verifyResetPhone,
+  requestPasswordResetOtp,
+  verifyResetOtp,
   resetPassword,
   googleLogin,
   facebookLogin,

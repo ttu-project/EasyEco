@@ -16,7 +16,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import axios from 'axios';
-import { getAuth, signInWithPhoneNumber } from '@react-native-firebase/auth';
 import { API_BASE_URL } from '../../config/api';
 
 export default function Forgot() {
@@ -26,7 +25,7 @@ export default function Forgot() {
   const [resetMode, setResetMode] = useState(null);
   const [resetToken, setResetToken] = useState(resetTokenFromLink || '');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [confirmation, setConfirmation] = useState(null);
+  const [resetSessionId, setResetSessionId] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(60);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
@@ -91,9 +90,11 @@ export default function Forgot() {
 
     try {
       setIsSendingEmail(true);
-      const result = await signInWithPhoneNumber(getAuth(), phoneNumber);
+      const response = await axios.post(`${API_BASE_URL}/users/request-password-reset-otp`, {
+        phoneNumber,
+      });
       setIdentifier(phoneNumber);
-      setConfirmation(result);
+      setResetSessionId(response.data.resetSessionId || '');
       setOtp(['', '', '', '', '', '']);
       setTimer(60);
       setResetMode('phone');
@@ -112,16 +113,17 @@ export default function Forgot() {
 
   const verifyPhoneCode = async () => {
     const code = otp.join('');
-    if (code.length !== 6 || !confirmation) {
+    if (code.length !== 6 || !resetSessionId) {
       Alert.alert('Enter the code', 'Please enter the 6-digit verification code.');
       return;
     }
 
     try {
       setIsVerifyingCode(true);
-      const credential = await confirmation.confirm(code);
-      const idToken = await credential.user.getIdToken();
-      const response = await axios.post(`${API_BASE_URL}/users/verify-reset-phone`, { idToken });
+      const response = await axios.post(`${API_BASE_URL}/users/verify-reset-otp`, {
+        resetSessionId,
+        code,
+      });
       setResetToken(response.data.resetToken);
       setScreenStep(3);
     } catch (error) {
@@ -160,7 +162,7 @@ export default function Forgot() {
     }
 
     if (!resetToken) {
-      Alert.alert('Reset link required', 'Open the password reset link from your email.');
+      Alert.alert('Verification required', 'Verify your phone number or open the password reset link from your email.');
       setScreenStep(1);
       return;
     }

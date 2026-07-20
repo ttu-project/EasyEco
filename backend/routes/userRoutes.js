@@ -7,7 +7,8 @@ const {
   requestPasswordReset,
   updateProfile,
   changePassword,
-  verifyResetPhone,
+  requestPasswordResetOtp,
+  verifyResetOtp,
   resetPassword,
   googleLogin,
   facebookLogin,
@@ -17,9 +18,10 @@ const requireAuth = require('../middleware/requireAuth');
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/request-password-reset', requestPasswordReset);
+router.post('/request-password-reset-otp', requestPasswordResetOtp);
 router.put('/profile', requireAuth, updateProfile);
 router.put('/change-password', requireAuth, changePassword);
-router.post('/verify-reset-phone', verifyResetPhone);
+router.post('/verify-reset-otp', verifyResetOtp);
 router.post('/reset-password', resetPassword);
 
 router.post('/google-login', googleLogin);
