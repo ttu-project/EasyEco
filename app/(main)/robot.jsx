@@ -23,9 +23,8 @@ import { getChatById, saveChat } from '../utils/chatHistory';
 
 const FLOATING_PADDING = 20;
 const BAR_HEIGHT = 54;
-// Keep the chat composer above the custom floating bottom tab bar.
-const TAB_BAR_HEIGHT = 60;
-const TAB_BAR_GAP = 16;
+const TAB_BAR_HEIGHT = 0;
+const TAB_BAR_GAP = 0;
 const CHAT_COMPOSER_BOTTOM = FLOATING_PADDING + TAB_BAR_HEIGHT + TAB_BAR_GAP;
 
 const askMeterAI = async (messages) => {
@@ -58,7 +57,6 @@ const getImageUri = ({ uri, base64, mimeType }) => (
 );
 
 export default function ChatbotScreen() {
-  const KEYBOARD_GAP = 45;
   const insets = useSafeAreaInsets(); 
   const router = useRouter();
   const { chatId, newChat } = useLocalSearchParams();
@@ -71,7 +69,7 @@ export default function ChatbotScreen() {
   const [activeChatId, setActiveChatId] = useState(null);
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const keyboardHeightRef = useRef(new Animated.Value(0)).current;
+  const scrollViewRef = useRef(null);
 
   const suggestions = [
     "How can I lower my electricity bill?",
@@ -79,17 +77,21 @@ export default function ChatbotScreen() {
     "Which appliances consume the most power?"
   ];
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages, isSending]);
+
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
       (event) => {
         const height = event.endCoordinates?.height || 0;
         setKeyboardHeight(height);
-        Animated.timing(keyboardHeightRef, {
-          toValue: height,
-          duration: Platform.OS === 'ios' ? event.duration || 250 : 0,
-          useNativeDriver: false,
-        }).start();
       }
     );
 
@@ -97,11 +99,6 @@ export default function ChatbotScreen() {
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
       () => {
         setKeyboardHeight(0);
-        Animated.timing(keyboardHeightRef, {
-          toValue: 0,
-          duration: Platform.OS === 'ios' ? 250 : 0,
-          useNativeDriver: false,
-        }).start();
       }
     );
 
@@ -147,12 +144,14 @@ export default function ChatbotScreen() {
       text: userMessage || 'Sent an image.',
       images: imagesToSend,
     };
-    const conversation = [...messages, newUserMessage].map(toApiMessage);
-    const nextChatId = activeChatId || `${Date.now()}`;
 
-    setMessages((currentMessages) => [...currentMessages, newUserMessage]);
+    const updatedMessages = [...messages, newUserMessage];
+    const nextChatId = activeChatId || `${Date.now()}`;
+    const conversation = updatedMessages.map(toApiMessage);
+
+    setMessages(updatedMessages);
     setActiveChatId(nextChatId);
-    saveChat({ id: nextChatId, messages: [...messages, newUserMessage] });
+    saveChat({ id: nextChatId, messages: updatedMessages });
     setShowSuggestions(false);
     setInputText('');
     setSelectedImages([]);
@@ -167,18 +166,24 @@ export default function ChatbotScreen() {
         role: 'assistant',
         text: answer || 'Sorry, I could not get an answer right now.',
       };
-      const updatedMessages = [...messages, newUserMessage, assistantMessage];
-      setMessages(updatedMessages);
-      saveChat({ id: nextChatId, messages: updatedMessages });
+
+      setMessages((prev) => {
+        const finalMessages = [...prev, assistantMessage];
+        saveChat({ id: nextChatId, messages: finalMessages });
+        return finalMessages;
+      });
     } catch (error) {
       const errorMessage = {
         id: `${Date.now()}-error`,
         role: 'assistant',
         text: error.response?.data?.message || 'Failed to contact the meter assistant.',
       };
-      const updatedMessages = [...messages, newUserMessage, errorMessage];
-      setMessages(updatedMessages);
-      saveChat({ id: nextChatId, messages: updatedMessages });
+
+      setMessages((prev) => {
+        const finalMessages = [...prev, errorMessage];
+        saveChat({ id: nextChatId, messages: finalMessages });
+        return finalMessages;
+      });
     } finally {
       setIsSending(false);
     }
@@ -221,21 +226,6 @@ export default function ChatbotScreen() {
 
   const bottomOffset = insets.bottom + FLOATING_PADDING;
   const chatComposerBottom = Math.max(bottomOffset, CHAT_COMPOSER_BOTTOM);
-
-  // ✅ CORRECT FIX: 
-  // When keyboardHeight = 0 (hidden): bottom = bottomOffset (floating position)
-  // When keyboardHeight = 300 (shown): bottom = 300 (sits ON TOP of keyboard)
-  // We use keyboardHeightRef directly as the bottom value!
-  const bottomPosition = keyboardHeightRef.interpolate({
-    inputRange: [0, 1000],
-    outputRange: [bottomOffset, 0],  // This was wrong! Let me fix it properly below
-    extrapolate: 'clamp',
-  });
-
-  // Actually, the simplest and most correct approach:
-  // Just use keyboardHeight state directly for the bottom position when keyboard is open
-  // And bottomOffset when closed. No need for complex interpolation.
-
   const isKeyboardVisible = keyboardHeight > 0;
 
   return (
@@ -255,11 +245,12 @@ export default function ChatbotScreen() {
       </View>
 
       <ScrollView 
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={[
           styles.scrollContent,
-          // ✅ Add padding to push content above input bar when keyboard opens
           {
+            // Push content above the input bar so last message is never hidden
             paddingBottom: isKeyboardVisible
               ? keyboardHeight + BAR_HEIGHT + 20
               : chatComposerBottom + BAR_HEIGHT + 20,
@@ -269,14 +260,16 @@ export default function ChatbotScreen() {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View>
-            <View style={styles.mainContent}>
-              <View style={styles.botCircle}>
-                <Bot_Logo width={100} height={100} />
+            {messages.length === 0 && (
+              <View style={styles.mainContent}>
+                <View style={styles.botCircle}>
+                  <Bot_Logo width={100} height={100} />
+                </View>
+                <Text style={styles.welcomeText}>
+                  Hi User, how can I help{"\n"}you today?
+                </Text>
               </View>
-              <Text style={styles.welcomeText}>
-                Hi User, how can I help{"\n"}you today?
-              </Text>
-            </View>
+            )}
 
             {messages.length > 0 && (
               <View style={styles.messagesContainer}>
@@ -321,11 +314,11 @@ export default function ChatbotScreen() {
         </TouchableWithoutFeedback>
       </ScrollView>
 
-      {/* ✅ FIXED: Use keyboardHeight directly for bottom position */}
-      <Animated.View style={[
+      {/* Input bar sits exactly on top of keyboard when open, floating when closed */}
+      <View style={[
         styles.bottomFixedContainer,
         { 
-          bottom: isKeyboardVisible ? keyboardHeight + KEYBOARD_GAP : chatComposerBottom,
+          bottom: isKeyboardVisible ? keyboardHeight +55: chatComposerBottom,
           left: FLOATING_PADDING,
           right: FLOATING_PADDING,
         }
@@ -355,8 +348,8 @@ export default function ChatbotScreen() {
                   style={styles.closeImageButton}
                   onPress={() => setSelectedImages((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                 >
-              <Text style={styles.closeText}>×</Text>
-            </TouchableOpacity>
+                  <Text style={styles.closeText}>×</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
@@ -427,7 +420,7 @@ export default function ChatbotScreen() {
           </View>
         )}
 
-      </Animated.View>
+      </View>
     </View>
   );
 }

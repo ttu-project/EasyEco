@@ -38,48 +38,73 @@ export const calculateMeterBill = (totalUnits) => {
   return totalCost;
 };
 
-export const buildUsageBillItems = (getUsage) => {
+export const summarizeUsageBill = (getUsage) => {
+  let dailyUnits = 0;
+  let monthlyUnits = 0;
   const allItems = [];
 
+  // Step 1: Accumulate total daily and monthly units across all categories and specs
   BILLING_CATEGORIES.forEach((category) => {
     const specs = getUsage(category);
-
     if (specs && specs.length > 0) {
       specs.forEach((spec) => {
         const watt = parseWatt(spec.watt);
-        const hours = parseTimeToHours(spec.time);
-        const dailyUnits = (watt * hours) / 1000;
-        const monthlyUnits = dailyUnits * 30;
+        const hoursPerDay = parseTimeToHours(spec.time);
+        
+        const daily = (watt * hoursPerDay) / 1000;
+        const monthly = daily * 30;
+
+        dailyUnits += daily;
+        monthlyUnits += monthly;
+      });
+    }
+  });
+
+  // Step 2: Round total units to match app-wide logic
+  const current = Math.round(dailyUnits);
+  const estimated = current * 30;
+
+  // Step 3: Compute aggregate meter bill using tier thresholds
+  const totalDailyCost = calculateMeterBill(current);
+  const totalMonthlyCost = calculateMeterBill(estimated);
+
+  // Step 4: Map individual items with prorated costs based on total units ratio
+  BILLING_CATEGORIES.forEach((category) => {
+    const specs = getUsage(category);
+    if (specs && specs.length > 0) {
+      specs.forEach((spec) => {
+        const watt = parseWatt(spec.watt);
+        const hoursPerDay = parseTimeToHours(spec.time);
+        
+        const daily = (watt * hoursPerDay) / 1000;
+        const monthly = daily * 30;
+
+        const itemDailyCost = dailyUnits > 0 
+          ? (daily / dailyUnits) * totalDailyCost 
+          : 0;
+        const itemMonthlyCost = monthlyUnits > 0 
+          ? (monthly / monthlyUnits) * totalMonthlyCost 
+          : 0;
 
         allItems.push({
           id: spec.id,
           name: spec.name,
           watt: spec.watt,
-          dailyUnits,
-          monthlyUnits,
-          dailyCost: calculateMeterBill(dailyUnits),
-          monthlyCost: calculateMeterBill(monthlyUnits),
+          dailyUnits: Math.round(daily),
+          monthlyUnits: Math.round(monthly),
+          dailyCost: Math.round(itemDailyCost),
+          monthlyCost: Math.round(itemMonthlyCost),
         });
       });
     }
   });
 
-  return allItems;
-};
-
-export const summarizeUsageBill = (getUsage) => {
-  const allItems = buildUsageBillItems(getUsage);
-  const totalDailyUnitsRaw = allItems.reduce((sum, item) => sum + item.dailyUnits, 0);
-  const totalMonthlyUnitsRaw = allItems.reduce((sum, item) => sum + item.monthlyUnits, 0);
-  const totalDailyUnits = Math.round(totalDailyUnitsRaw);
-  const totalMonthlyUnits = Math.round(totalMonthlyUnitsRaw);
-
   return {
     allItems,
-    totalDailyUnits,
-    totalMonthlyUnits,
-    totalDailyCost: calculateMeterBill(totalDailyUnits),
-    totalMonthlyCost: calculateMeterBill(totalMonthlyUnits),
+    totalDailyUnits: current,
+    totalMonthlyUnits: estimated,
+    totalDailyCost,
+    totalMonthlyCost,
   };
 };
 

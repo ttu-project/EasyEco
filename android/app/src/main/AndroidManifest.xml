@@ -35,6 +35,12 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="fb1681691103048797"/>
       </intent-filter>
+      <intent-filter data-generated="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <data android:scheme="fb1681691103048797"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
     </activity>
   </application>
 </manifest>
