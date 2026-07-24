@@ -1,20 +1,16 @@
 import { StyleSheet, Text, View, TouchableOpacity, Image, Dimensions, SafeAreaView, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
-
-
+import { summarizeUsageBill } from '../utils/billing';
+import { useLanguage } from '../context/LanguageContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Responsive constants
-const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2; // 60 = 20 padding on sides + 20 gap between cards
+const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2;
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.21;
-
-const scale = SCREEN_HEIGHT / 800;
-const s = (size) => size * scale;
-
 
 const ICON_MAP = {
   fridge: require('../../assets/Refigerator.png'),
@@ -30,9 +26,6 @@ const ICON_MAP = {
   kettle: require('../../assets/Electric_kettle.png'),
   vacuum: require('../../assets/Vacuum_cleaner.png'),
 };
-
-
-const USAGE_DATA = {};
 
 const PAGES_DATA = [
   [
@@ -55,49 +48,34 @@ const PAGES_DATA = [
   ]
 ];
 
-const RATES = [
-  { limit: 50,   rate: 50 },   
-  { limit: 50,   rate: 100 },  
-  { limit: 100,  rate: 150 },  
-  { limit: Infinity, rate: 300 }, 
-];
-
-const calculateMeterBill = (totalUnits) => {
-  let remaining = totalUnits;
-  let totalCost = 0;
-  const breakdown = [];
-
-  for (const tier of RATES) {
-    if (remaining <= 0) break;
-    const unitsInTier = Math.min(remaining, tier.limit);
-    const tierCost = unitsInTier * tier.rate;
-    totalCost += tierCost;
-    remaining -= unitsInTier;
-     breakdown.push({
-      units: unitsInTier,
-      rate: tier.rate,
-      cost: tierCost,
-    });
-  }
-
-  return { 
-    totalUnits,
-    totalCost,
-    breakdown,
-   };
-};
-
 export default function Calculate() {
   const router = useRouter();
-  const { getUsage } = useUsage();
+  const { getUsage, usageData, fetchUsage } = useUsage();
+  const { t } = useLanguage();
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
+
   const [currentUnits, setCurrentUnits] = useState(0);
   const [currentCost, setCurrentCost] = useState(0);
   const [estimatedUnits, setEstimatedUnits] = useState(0);
   const [estimatedCost, setEstimatedCost] = useState(0);
 
- 
+  // Automatically calculate bills whenever usage changes
+  const calculateBill = useCallback(() => {
+    const summary = summarizeUsageBill(getUsage);
+    setCurrentUnits(summary.totalDailyUnits);
+    setCurrentCost(summary.totalDailyCost);
+    setEstimatedUnits(summary.totalMonthlyUnits);
+    setEstimatedCost(summary.totalMonthlyCost);
+  }, [getUsage]);
+
+  useEffect(() => {
+    fetchUsage();
+  }, [fetchUsage]);
+
+  useEffect(() => {
+    calculateBill();
+  }, [calculateBill, usageData]);
 
   const handleDotPress = (pageIndex) => {
     setActivePage(pageIndex);
@@ -116,26 +94,6 @@ export default function Calculate() {
       setActivePage(currentIndex);
     }
   };
-
-  
-const parseWatt = (wattStr) => {
-  const match = wattStr.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 0;
-};
-
-
-const parseTimeToHours = (timeStr) => {
-  const hrMatch = timeStr.match(/(\d+)\s*hr/);
-  const minMatch = timeStr.match(/(\d+)\s*min/);
-  const hours = hrMatch ? parseInt(hrMatch[1], 10) : 0;
-  const minutes = minMatch ? parseInt(minMatch[1], 10) : 0;
-  return hours + (minutes / 60);
-};
-
-// Myanmar Tiered Rates
-
-
-
 
   const renderFigmaIcon = (type) => {
     const iconSource = ICON_MAP[type];
@@ -159,29 +117,23 @@ const parseTimeToHours = (timeStr) => {
     });
   };
 
-  
   const renderCardContent = (item) => {
     const specs = getUsage(item.categoryId); 
     
-   
     if (!specs || specs.length === 0) {
       return (
-        <Text style={styles.addActionText}>Add Usage Details</Text>
+        <Text style={styles.addActionText}>{t('addUsageDetails')}</Text>
       );
     }
 
-    
     return (
       <View style={styles.specsContainer}>
-        {/* Show max 2 items */}
         {specs.slice(0, 2).map((spec, i) => (
           <View key={i} style={styles.specRow}>
             <Text style={styles.specText}>{spec.watt}</Text>
             <Text style={styles.specText}>{spec.time}</Text>
           </View>
         ))}
-        
-        {/* Show "..." if more than 2 items */}
         {specs.length > 2 && (
           <Text style={styles.moreText}>...</Text>
         )}
@@ -189,87 +141,44 @@ const parseTimeToHours = (timeStr) => {
     );
   };
 
-  const calculateBill = () => {
-    let dailyUnits = 0;      
-    let monthlyUnits = 0;    
-
-    PAGES_DATA.forEach((page) => {
-      page.forEach((item) => {
-        const specs = getUsage(item.categoryId);
-        
-        if (specs && specs.length > 0) {
-          specs.forEach((spec) => {
-            const watt = parseWatt(spec.watt);
-            const hoursPerDay = parseTimeToHours(spec.time);
-            
-            const daily = (watt * hoursPerDay) / 1000;
-            const monthly = daily * 30;
-             dailyUnits += daily;
-            monthlyUnits += monthly;
-          });
-        }
-      });
-    });
-
-  const current = Math.round(dailyUnits); 
-  const estimated =  current * 30; 
-  const currentResult = calculateMeterBill(current);
-  const estimatedResult = calculateMeterBill(estimated);
-
-   const { totalCost: currentCostValue } = calculateMeterBill(current);
-  const { totalCost: estimatedCostValue } = calculateMeterBill(estimated);
-
-    
-    setCurrentUnits(current);
-    setCurrentCost(currentCostValue);
-    setEstimatedUnits(estimated);
-    setEstimatedCost(estimatedCostValue);
-  };
-
-
-  
-  // ... [Keep your state variables and calculateBill logic] ...
-
   return (
-    <SafeAreaView 
-     edges={['top', 'bottom', 'left', 'right']}
-    style={styles.container}>
+    <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={styles.container}>
       <View style={styles.mainContent}>
         {/* Header */}
         <View style={styles.header}>
           <Image source={require('../../assets/Logoact2.png')} style={styles.logo} />
-         <TouchableOpacity onPress={() => router.push({ pathname: '../Usage/Notification'} )}>
-          <Image source={require('../../assets/Notifications.png')} style={styles.notiIcon} />
+          <TouchableOpacity onPress={() => router.push({ pathname: '../Usage/Notification' })}>
+            <Image source={require('../../assets/Notifications.png')} style={styles.notiIcon} />
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.mainTitle}>Estimated Monthly Bill</Text>
+        <Text style={styles.mainTitle}>{t('estimatedMonthlyBill')}</Text>
 
         <TouchableOpacity activeOpacity={0.9} onPress={() => router.push({ pathname: '../UsageDetail', params: { type: 'current' } })}>
           <View style={styles.billCard}>
             <View style={styles.tableHeader}>
               <Text style={[styles.tableHeaderText, { flex: 1.2 }]}></Text>
-              <Text style={styles.tableHeaderText}>Energy Usage</Text>
-              <Text style={styles.tableHeaderText}>Electricity Bill</Text>
+              <Text style={styles.tableHeaderText}>{t('energyUsage')}</Text>
+              <Text style={styles.tableHeaderText}>{t('electricityBill')}</Text>
             </View>
             <View style={styles.tableRow}>
-              <Text style={[styles.rowLabel, { flex: 1.2 }]}>Current Usage :</Text>
-              <Text style={styles.rowValue}>{currentUnits} units</Text>
+              <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
+              <Text style={styles.rowValue}>{currentUnits} {t('units')}</Text>
               <Text style={styles.rowValue}>{currentCost.toLocaleString()} MMK</Text>
             </View>
             <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
-              <Text style={[styles.rowLabel, { flex: 1.2 }]}>Estimated Total :</Text>
-              <Text style={styles.rowValue}>{estimatedUnits} units</Text>
+              <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
+              <Text style={styles.rowValue}>{estimatedUnits} {t('units')}</Text>
               <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
             </View>
           </View>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Track Duration and Wattage</Text>
+        <Text style={styles.sectionTitle}>{t('trackDurationWattage')}</Text>
 
         <View style={styles.swiperWrapper}>
           <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
             ref={scrollViewRef}
             horizontal
             pagingEnabled
@@ -303,7 +212,7 @@ const parseTimeToHours = (timeStr) => {
         </View>
 
         <TouchableOpacity style={styles.calculateButton} onPress={calculateBill}>
-          <Text style={styles.buttonText}>Calculate Bill</Text>
+          <Text style={styles.buttonText}>{t('calculateBill')}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -324,9 +233,9 @@ const styles = StyleSheet.create({
   rowLabel: { color: '#FFF', fontSize: 13 },
   rowValue: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '700', textAlign: 'right' },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 10 },
-  swiperWrapper: { width: '100%'}, 
+  swiperWrapper: { width: '100%' }, 
   pageContainer: { width: SCREEN_WIDTH - 40 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'},
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   applianceCard: { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: '#3B7AEE', borderRadius: 16, padding: 12, marginBottom: 15 },
   iconCircle: { width: 36, height: 36, backgroundColor: '#FFF', borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
   cardTitle: { fontSize: 14, fontWeight: '600', color: '#FFF' },
@@ -336,32 +245,10 @@ const styles = StyleSheet.create({
   activeDot: { width: 24, backgroundColor: '#A2B9E3' },
   inactiveDot: { width: 10, backgroundColor: '#D4E0F7' },
   calculateButton: { backgroundColor: '#1958CE', borderRadius: 14, paddingVertical: 12, alignItems: 'center', alignSelf: 'center', width: '55%' },
-  specsContainer: { 
-    width: '100%',
-    marginTop: 5,
-  },
-  specRow: { 
-    flexDirection: 'row',      // Change this to row
-    justifyContent: 'flex-start',
-    marginBottom: 2, 
-    gap: 8                 // Adds space between Watt and Time
-  },
-  specText: { 
-    fontSize: 11, 
-    color: '#FFF',
-    fontWeight: '400'
-  },
-   moreText: { 
-    fontSize: 14, 
-    color: 'rgba(255,255,255,0.9)', 
-    textAlign: 'center',
-    fontWeight: 'bold'
-  },
-   addActionText: { 
-    fontSize: 12, 
-    color: 'rgba(255,255,255,0.8)', 
-    textAlign: 'center', 
-    paddingVertical: 4 
-  },
+  specsContainer: { width: '100%', marginTop: 5 },
+  specRow: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 2, gap: 8 },
+  specText: { fontSize: 11, color: '#FFF', fontWeight: '400' },
+  moreText: { fontSize: 14, color: 'rgba(255,255,255,0.9)', textAlign: 'center', fontWeight: 'bold' },
+  addActionText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', textAlign: 'center', paddingVertical: 4 },
   buttonText: { color: '#FFF', fontSize: 16, fontWeight: '600' }
 });
