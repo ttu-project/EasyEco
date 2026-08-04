@@ -1,14 +1,15 @@
-import { StyleSheet, Text, View, TouchableOpacity, Image, Dimensions, SafeAreaView, ScrollView } from 'react-native';
+import {
+  StyleSheet, Text, View, TouchableOpacity, Image, Dimensions,
+  SafeAreaView, ScrollView, Modal, TextInput, Pressable,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
-import { summarizeUsageBill } from '../utils/billing';
+import { getForecast, generateRecommendation } from '../utils/billing';
 import { useLanguage } from '../context/LanguageContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// Responsive constants
 const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2;
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.21;
 
@@ -50,8 +51,12 @@ const PAGES_DATA = [
 
 export default function Calculate() {
   const router = useRouter();
-  const { getUsage, usageData, fetchUsage } = useUsage();
+  const {
+    devices, monthlyBudget, dailyRecords,
+    getUsage, saveDailyRecord, setMonthlyBudget,
+  } = useUsage();
   const { t } = useLanguage();
+
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
 
@@ -60,46 +65,74 @@ export default function Calculate() {
   const [estimatedUnits, setEstimatedUnits] = useState(0);
   const [estimatedCost, setEstimatedCost] = useState(0);
 
-  // Automatically calculate bills whenever usage changes
-  const calculateBill = useCallback(() => {
-    const summary = summarizeUsageBill(getUsage);
-    setCurrentUnits(summary.totalDailyUnits);
-    setCurrentCost(summary.totalDailyCost);
-    setEstimatedUnits(summary.totalMonthlyUnits);
-    setEstimatedCost(summary.totalMonthlyCost);
-  }, [getUsage]);
+  const [recommendationText, setRecommendationText] = useState('');
+  const [budgetStatus, setBudgetStatus] = useState({
+    isOverBudget: false, overBudgetAmount: 0, alertMessage: '', alertType: 'success'
+  });
+
+  const [resultModalVisible, setResultModalVisible] = useState(false);
+  const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+  const [budgetInput, setBudgetInput] = useState(String(monthlyBudget));
 
   useEffect(() => {
-    fetchUsage();
-  }, [fetchUsage]);
+    runForecast(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices, monthlyBudget, dailyRecords]);
 
-  useEffect(() => {
-    calculateBill();
-  }, [calculateBill, usageData]);
+  const runForecast = useCallback((shouldSaveToday = false) => {
+    const forecast = getForecast(devices, dailyRecords, monthlyBudget);
+
+    setCurrentUnits(forecast.currentDailyUnits);
+    setCurrentCost(forecast.currentDailyCost);
+    setEstimatedUnits(forecast.estimatedUnits);
+    setEstimatedCost(forecast.estimatedCost);
+
+    setBudgetStatus({
+      isOverBudget: forecast.isOverBudget,
+      overBudgetAmount: forecast.overBudgetAmount,
+      alertMessage: forecast.isOverBudget
+        ? `You are ${forecast.overBudgetAmount.toLocaleString()} MMK over your budget.`
+        : 'You are within the budget.',
+      alertType: forecast.isOverBudget ? 'warning' : 'success',
+    });
+
+    setRecommendationText(generateRecommendation(devices));
+
+    if (shouldSaveToday) {
+      saveDailyRecord(forecast.currentDailyUnits, forecast.currentDailyCost);
+    }
+  }, [devices, dailyRecords, monthlyBudget, saveDailyRecord]);
+
+  const handleCalculatePress = () => {
+    runForecast(true);
+    setResultModalVisible(true);
+  };
+
+  const handleOpenBudgetModal = () => {
+    setBudgetInput(String(monthlyBudget));
+    setBudgetModalVisible(true);
+  };
+
+  const handleSaveBudget = () => {
+    const val = parseFloat(budgetInput);
+    if (!isNaN(val) && val >= 0) setMonthlyBudget(val);
+    setBudgetModalVisible(false);
+  };
 
   const handleDotPress = (pageIndex) => {
     setActivePage(pageIndex);
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({
-        x: pageIndex * (SCREEN_WIDTH - 40),
-        animated: true,
-      });
-    }
+    scrollViewRef.current?.scrollTo({ x: pageIndex * (SCREEN_WIDTH - 40), animated: true });
   };
 
   const handleScroll = (event) => {
-    const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const currentIndex = Math.round(contentOffsetX / (SCREEN_WIDTH - 40));
-    if (currentIndex !== activePage && currentIndex >= 0 && currentIndex < PAGES_DATA.length) {
-      setActivePage(currentIndex);
-    }
+    const x = event.nativeEvent.contentOffset.x;
+    const idx = Math.round(x / (SCREEN_WIDTH - 40));
+    if (idx !== activePage && idx >= 0 && idx < PAGES_DATA.length) setActivePage(idx);
   };
 
   const renderFigmaIcon = (type) => {
-    const iconSource = ICON_MAP[type];
-    if (iconSource) {
-      return <Image source={iconSource} style={{ width: 24, height: 24 }} />;
-    }
+    const src = ICON_MAP[type];
+    if (src) return <Image source={src} style={{ width: 24, height: 24 }} />;
     return (
       <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <Path d="M12 3V21M3 12H21" stroke="#1958CE" strokeWidth="2" />
@@ -110,22 +143,15 @@ export default function Calculate() {
   const handleCardPress = (item) => {
     router.push({
       pathname: '../Usage/[category]',
-      params: { 
-        category: item.categoryId,
-        title: item.title 
-      }
+      params: { category: item.categoryId },
     });
   };
 
   const renderCardContent = (item) => {
-    const specs = getUsage(item.categoryId); 
-    
+    const specs = getUsage(item.categoryId);
     if (!specs || specs.length === 0) {
-      return (
-        <Text style={styles.addActionText}>{t('addUsageDetails')}</Text>
-      );
+      return <Text style={styles.addActionText}>{t('addUsageDetails')}</Text>;
     }
-
     return (
       <View style={styles.specsContainer}>
         {specs.slice(0, 2).map((spec, i) => (
@@ -134,9 +160,7 @@ export default function Calculate() {
             <Text style={styles.specText}>{spec.time}</Text>
           </View>
         ))}
-        {specs.length > 2 && (
-          <Text style={styles.moreText}>...</Text>
-        )}
+        {specs.length > 2 && <Text style={styles.moreText}>...</Text>}
       </View>
     );
   };
@@ -144,53 +168,73 @@ export default function Calculate() {
   return (
     <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={styles.container}>
       <View style={styles.mainContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Image source={require('../../assets/Logoact2.png')} style={styles.logo} />
-          <TouchableOpacity onPress={() => router.push({ pathname: '../Usage/Notification' })}>
-            <Image source={require('../../assets/Notifications.png')} style={styles.notiIcon} />
+        <Text style={styles.mainTitle}>{t('estimatedMonthlyBill')}</Text>
+
+        {/* Bill Card */}
+        <View style={styles.billCard}>
+          <View style={styles.budgetRow}>
+            <Text style={styles.budgetText}>Monthly Budget Goal : {monthlyBudget} MMK</Text>
+            <TouchableOpacity style={styles.setBudgetButton} onPress={handleOpenBudgetModal}>
+              <Text style={styles.setBudgetText}>✎ SET BUDGET</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderText, { flex: 1.2 }]} />
+            <Text style={styles.tableHeaderText}>{t('energyUsage')}</Text>
+            <Text style={styles.tableHeaderText}>{t('electricityBill')}</Text>
+          </View>
+          <View style={styles.tableRow}>
+            <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
+            <Text style={styles.rowValue}>{currentUnits} {t('units')}</Text>
+            <Text style={styles.rowValue}>{currentCost.toLocaleString()} MMK</Text>
+          </View>
+          <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
+            <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
+            <Text style={styles.rowValue}>{estimatedUnits} {t('units')}</Text>
+            <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
+          </View>
+        </View>
+
+        {/* Recommendation Banner */}
+        <View style={styles.recommendationBanner}>
+          <Text style={styles.recommendationText} numberOfLines={1}>
+            <Text style={styles.recommendationBold}>Recommendations &gt;&gt; </Text>
+            {recommendationText}
+          </Text>
+        </View>
+
+        {/* Section Header */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>{t('trackDurationWattage')}</Text>
+          <TouchableOpacity
+            style={styles.myDevicesButton}
+            onPress={() => router.push({ pathname: '../Devices/MyDevices' })}
+          >
+            <Text style={styles.myDevicesText}>☰ My Devices</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.mainTitle}>{t('estimatedMonthlyBill')}</Text>
-
-        <TouchableOpacity activeOpacity={0.9} onPress={() => router.push({ pathname: '../UsageDetail', params: { type: 'current' } })}>
-          <View style={styles.billCard}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 1.2 }]}></Text>
-              <Text style={styles.tableHeaderText}>{t('energyUsage')}</Text>
-              <Text style={styles.tableHeaderText}>{t('electricityBill')}</Text>
-            </View>
-            <View style={styles.tableRow}>
-              <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
-              <Text style={styles.rowValue}>{currentUnits} {t('units')}</Text>
-              <Text style={styles.rowValue}>{currentCost.toLocaleString()} MMK</Text>
-            </View>
-            <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
-              <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
-              <Text style={styles.rowValue}>{estimatedUnits} {t('units')}</Text>
-              <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <Text style={styles.sectionTitle}>{t('trackDurationWattage')}</Text>
-
+        {/* Device Grid */}
         <View style={styles.swiperWrapper}>
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1 }}
             ref={scrollViewRef}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onScroll={handleScroll}
             scrollEventThrottle={16}
+            contentContainerStyle={{ flexGrow: 1 }}
           >
             {PAGES_DATA.map((pageItems, pageIndex) => (
               <View key={pageIndex} style={styles.pageContainer}>
                 <View style={styles.gridContainer}>
                   {pageItems.map((item) => (
-                    <TouchableOpacity key={item.id} style={styles.applianceCard} onPress={() => handleCardPress(item)}>
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.applianceCard}
+                      onPress={() => handleCardPress(item)}
+                    >
                       <View>
                         <View style={styles.iconCircle}>{renderFigmaIcon(item.iconType)}</View>
                         <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
@@ -211,10 +255,72 @@ export default function Calculate() {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.calculateButton} onPress={calculateBill}>
+        <TouchableOpacity style={styles.calculateButton} onPress={handleCalculatePress}>
           <Text style={styles.buttonText}>{t('calculateBill')}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Result Modal — photo 3 style */}
+      <Modal animationType="fade" transparent visible={resultModalVisible}>
+        <View style={styles.resultModalOverlay}>
+          <Pressable style={styles.resultModalBackdrop} onPress={() => setResultModalVisible(false)} />
+          <View style={styles.resultModalCard}>
+            <View style={styles.alertRow}>
+              <Text style={styles.alertIcon}>
+                {budgetStatus.alertType === 'warning' ? '⚠️' : '✅'}
+              </Text>
+              <Text style={styles.alertText}>
+                {budgetStatus.alertType === 'warning' ? (
+                  <>
+                    You are <Text style={styles.alertAmountOver}>{budgetStatus.overBudgetAmount.toLocaleString()}</Text> MMK over your budget.
+                  </>
+                ) : (
+                  <Text style={styles.alertAmountSafe}>You are within the budget.</Text>
+                )}
+              </Text>
+            </View>
+            {budgetStatus.isOverBudget && (
+              <TouchableOpacity style={styles.viewRecLink} onPress={() => {
+    setResultModalVisible(false);
+    router.push({ pathname: '../Recommendations/Recommendations' });
+  }}>
+                <Text style={styles.viewRecText}>View Recommendations →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Budget Modal */}
+     <Modal animationType="fade" transparent visible={budgetModalVisible}>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>Set Monthly Budget Goal</Text>
+
+      <Text style={styles.modalLabel}>Monthly Budget</Text>
+      <View style={styles.modalInputWrapper}>
+        <TextInput
+          style={styles.modalInput}
+          keyboardType="numeric"
+          value={budgetInput}
+          onChangeText={setBudgetInput}
+          placeholder="Enter amount (e.g. 50,000)"
+          placeholderTextColor="#9CA3AF"
+        />
+        <Text style={styles.modalInputSuffix}>MMK</Text>
+      </View>
+
+      <View style={styles.modalButtons}>
+        <TouchableOpacity style={styles.modalButtonCancel} onPress={() => setBudgetModalVisible(false)}>
+          <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.modalButtonSave} onPress={handleSaveBudget}>
+          <Text style={styles.modalButtonTextSave}>Save Budget</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
     </SafeAreaView>
   );
 }
@@ -222,33 +328,285 @@ export default function Calculate() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
   mainContent: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 10 },
-  logo: { width: 50, height: 50, resizeMode: 'contain' },
-  notiIcon: { width: 30, height: 30, resizeMode: 'contain' },
+
   mainTitle: { fontSize: 20, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 9 },
-  billCard: { backgroundColor: '#2167E1', borderRadius: 12, padding: 10, marginBottom: 10 },
+
+  billCard: {
+    backgroundColor: '#2167E1',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
+  },
+  budgetText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '500',
+    flex: 1,
+    marginRight: 8,
+  },
+  setBudgetButton: {
+    backgroundColor: '#0D2A4A',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  setBudgetText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
   tableHeader: { flexDirection: 'row', marginBottom: 4 },
-  tableHeaderText: { flex: 1, color: 'rgba(255,255,255,0.7)', fontSize: 9, textAlign: 'right' },
-  tableRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)', paddingBottom: 4, marginBottom: 4 },
-  rowLabel: { color: '#FFF', fontSize: 13 },
-  rowValue: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '700', textAlign: 'right' },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 10 },
-  swiperWrapper: { width: '100%' }, 
+  tableHeaderText: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 9,
+    textAlign: 'right',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.2)',
+    paddingBottom: 4,
+    marginBottom: 4,
+  },
+  rowLabel: { color: '#FFF', fontSize: 12 },
+  rowValue: {
+    flex: 1,
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+
+  recommendationBanner: {
+    backgroundColor: '#0D2A4A',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    width: '100%',
+  },
+  recommendationText: { color: '#FFF', fontSize: 12 },
+  recommendationBold: { fontWeight: 'bold', color: '#FFF' },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0D2A4A' },
+  myDevicesButton: {
+    backgroundColor: '#2167E1',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  myDevicesText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+
+  swiperWrapper: { width: '100%' },
   pageContainer: { width: SCREEN_WIDTH - 40 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  applianceCard: { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: '#3B7AEE', borderRadius: 16, padding: 12, marginBottom: 15 },
-  iconCircle: { width: 36, height: 36, backgroundColor: '#FFF', borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  applianceCard: {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    backgroundColor: '#3B7AEE',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 7,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    backgroundColor: '#FFF',
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   cardTitle: { fontSize: 14, fontWeight: '600', color: '#FFF' },
-  underline: { height: 1, backgroundColor: 'rgba(255,255,255,0.3)', marginVertical: 4 },
-  paginationContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 6 },
+  underline: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginVertical: 4,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
   dot: { height: 4, borderRadius: 3, marginHorizontal: 4 },
   activeDot: { width: 24, backgroundColor: '#A2B9E3' },
   inactiveDot: { width: 10, backgroundColor: '#D4E0F7' },
-  calculateButton: { backgroundColor: '#1958CE', borderRadius: 14, paddingVertical: 12, alignItems: 'center', alignSelf: 'center', width: '55%' },
+  calculateButton: {
+    backgroundColor: '#1958CE',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    alignSelf: 'center',
+    width: '55%',
+  },
   specsContainer: { width: '100%', marginTop: 5 },
-  specRow: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 2, gap: 8 },
+  specRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: 2,
+    gap: 8,
+  },
   specText: { fontSize: 11, color: '#FFF', fontWeight: '400' },
-  moreText: { fontSize: 14, color: 'rgba(255,255,255,0.9)', textAlign: 'center', fontWeight: 'bold' },
-  addActionText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', textAlign: 'center', paddingVertical: 4 },
-  buttonText: { color: '#FFF', fontSize: 16, fontWeight: '600' }
+  moreText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  addActionText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    paddingVertical: 4,
+  },
+  buttonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+
+  /* Result Modal — photo 3 style */
+  resultModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  resultModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  resultModalCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  alertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertIcon: { fontSize: 18, marginRight: 8 },
+  alertText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  alertAmountOver: {
+    color: '#DC2626',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  alertAmountSafe: {
+    color: '#059669',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  viewRecLink: { marginTop: 12 },
+  viewRecText: { color: '#1958CE', fontWeight: '600', fontSize: 13 },
+
+  /* Budget Modal */
+  modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.4)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+modalContent: {
+  backgroundColor: '#FFF',
+  borderRadius: 20,
+  padding: 24,
+  width: '85%',
+  alignItems: 'center',
+},
+modalTitle: {
+  fontSize: 17,
+  fontWeight: '700',
+  color: '#111827',
+  marginBottom: 20,
+},
+modalLabel: {
+  alignSelf: 'flex-start',
+  fontSize: 13,
+  color: '#374151',
+  fontWeight: '500',
+  marginBottom: 6,
+},
+modalInputWrapper: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  width: '100%',
+  backgroundColor: '#F3F4F6',
+  borderRadius: 10,
+  paddingHorizontal: 12,
+  marginBottom: 20,
+},
+modalInput: {
+  flex: 1,
+  paddingVertical: 12,
+  fontSize: 15,
+  color: '#111827',
+},
+modalInputSuffix: {
+  fontSize: 14,
+  color: '#6B7280',
+  fontWeight: '500',
+  marginLeft: 4,
+},
+modalButtons: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  width: '100%',
+  gap: 12,
+},
+modalButtonCancel: {
+  flex: 1,
+  paddingVertical: 12,
+  borderRadius: 10,
+  backgroundColor: '#E5E7EB',
+  alignItems: 'center',
+},
+modalButtonSave: {
+  flex: 1,
+  paddingVertical: 12,
+  borderRadius: 10,
+  backgroundColor: '#1958CE',
+  alignItems: 'center',
+},
+modalButtonTextCancel: {
+  color: '#374151',
+  fontWeight: '600',
+  fontSize: 14,
+},
+modalButtonTextSave: {
+  color: '#FFF',
+  fontWeight: '600',
+  fontSize: 14,
+},
 });

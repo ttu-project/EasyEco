@@ -1,13 +1,45 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../config/api';
 import { getToken, getUser } from '../utils/authStorage';
 
 const UsageContext = createContext();
 
 export function UsageProvider({ children }) {
+  // ===== ORIGINAL API STATE =====
   const [usageData, setUsageData] = useState({});
 
+  // ===== NEW LOCAL STATE =====
+  const [monthlyBudget, setMonthlyBudget] = useState(100);
+  const [dailyRecords, setDailyRecords] = useState([]);
+  const [firstEntryDate, setFirstEntryDate] = useState(null);
+
+  // ===== LOAD LOCAL DATA ON MOUNT =====
+  useEffect(() => {
+    const loadLocal = async () => {
+      try {
+        const [b, f, r] = await Promise.all([
+          AsyncStorage.getItem('monthlyBudget'),
+          AsyncStorage.getItem('firstEntryDate'),
+          AsyncStorage.getItem('dailyRecords'),
+        ]);
+        if (b) setMonthlyBudget(JSON.parse(b));
+        if (f) setFirstEntryDate(f);
+        if (r) setDailyRecords(JSON.parse(r));
+      } catch (e) {
+        console.error('Local load error', e);
+      }
+    };
+    loadLocal();
+  }, []);
+
+  // ===== PERSIST LOCAL DATA =====
+  useEffect(() => { AsyncStorage.setItem('monthlyBudget', JSON.stringify(monthlyBudget)); }, [monthlyBudget]);
+  useEffect(() => { if (firstEntryDate) AsyncStorage.setItem('firstEntryDate', firstEntryDate); }, [firstEntryDate]);
+  useEffect(() => { AsyncStorage.setItem('dailyRecords', JSON.stringify(dailyRecords)); }, [dailyRecords]);
+
+  // ===== ORIGINAL FUNCTIONS (PRESERVED) =====
   const groupUsageByCategory = (items) => {
     return items.reduce((grouped, item) => {
       const category = item.category;
@@ -17,17 +49,12 @@ export function UsageProvider({ children }) {
         watt: item.watt,
         time: item.time,
       };
-
-      return {
-        ...grouped,
-        [category]: [...(grouped[category] || []), usageItem],
-      };
+      return { ...grouped, [category]: [...(grouped[category] || []), usageItem] };
     }, {});
   };
 
   const getAuthConfig = async () => {
     const [token, user] = await Promise.all([getToken(), getUser()]);
-
     return {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -36,36 +63,36 @@ export function UsageProvider({ children }) {
     };
   };
 
-  const fetchUsage = async () => {
+  const fetchUsage = useCallback(async () => {
     try {
       const config = await getAuthConfig();
       const response = await axios.get(`${API_BASE_URL}/usage`, config);
       setUsageData(groupUsageByCategory(response.data));
     } catch (error) {
-      if (error.response?.status === 401) {
-        setUsageData({});
-      }
+      if (error.response?.status === 401) setUsageData({});
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchUsage();
-  }, []);
+  }, [fetchUsage]);
 
-  const addUsage = async (category, item) => {
+  const addUsage = useCallback(async (category, item) => {
+    const tempId = `temp-${Date.now()}`;
+    const optimisticItem = { ...item, id: tempId };
+
     setUsageData((prev) => ({
       ...prev,
-      [category]: [...(prev[category] || []), item],
+      [category]: [...(prev[category] || []), optimisticItem],
     }));
 
     try {
       const config = await getAuthConfig();
-      const response = await axios.post(`${API_BASE_URL}/usage`, {
-        category,
-        name: item.name,
-        watt: item.watt,
-        time: item.time,
-      }, config);
+      const response = await axios.post(
+        `${API_BASE_URL}/usage`,
+        { category, name: item.name, watt: item.watt, time: item.time },
+        config
+      );
 
       const savedItem = {
         id: response.data._id,
@@ -76,43 +103,113 @@ export function UsageProvider({ children }) {
 
       setUsageData((prev) => ({
         ...prev,
-        [category]: (prev[category] || []).map((usageItem) =>
-          usageItem.id === item.id ? savedItem : usageItem
-        ),
+        [category]: (prev[category] || []).map((u) => (u.id === tempId ? savedItem : u)),
       }));
     } catch (error) {
+      setUsageData((prev) => ({
+        ...prev,
+        [category]: (prev[category] || []).filter((u) => u.id !== tempId),
+      }));
     }
-  };
+  }, []);
 
-  const removeUsage = async (category, itemId) => {
-  const previousUsageData = usageData;
+  const removeUsage = useCallback(async (category, itemId) => {
+    const previousUsageData = usageData;
+    setUsageData((prev) => ({
+      ...prev,
+      [category]: prev[category]?.filter((item) => item.id !== itemId) || [],
+    }));
+    try {
+      const config = await getAuthConfig();
+      await axios.delete(`${API_BASE_URL}/usage/${itemId}`, config);
+    } catch (error) {
+      setUsageData(previousUsageData);
+    }
+  }, [usageData]);
 
-  setUsageData((prev) => ({
-    ...prev,
-    [category]: prev[category]?.filter((item) => item.id !== itemId) || [],
-  }));
+  const getUsage = useCallback((category) => usageData[category] || [], [usageData]);
 
-  try {
-    const config = await getAuthConfig();
-    await axios.delete(`${API_BASE_URL}/usage/${itemId}`, config);
-  } catch (error) {
-    setUsageData(previousUsageData);
-  }
-};
+  const clearAllUsage = useCallback(() => setUsageData({}), []);
 
-  const getUsage = (category) => {
-    return usageData[category] || [];
-  };
+  // ===== DERIVED: Flat devices array for My Devices =====
+  const devices = useMemo(() => {
+    const all = [];
+    Object.entries(usageData).forEach(([category, items]) => {
+      if (items?.length > 0) {
+        items.forEach((item) => all.push({ ...item, categoryId: category }));
+      }
+    });
+    return all;
+  }, [usageData]);
 
-  // Clear only the in-memory data when a user logs out. Their saved usage
-  // remains associated with their account and is fetched again after login.
-  const clearAllUsage = () => {
-    setUsageData({});
-  };
+  // ===== NEW HELPERS =====
+  const getAllDevices = useCallback(() => devices, [devices]);
+  const getDeviceById = useCallback((id) => devices.find((d) => d.id === id), [devices]);
+
+  const addDevice = useCallback(async (device) => {
+    const { categoryId, name, watt, time } = device;
+    await addUsage(categoryId, { name, watt, time });
+    setFirstEntryDate((prev) => prev || new Date().toISOString().split('T')[0]);
+  }, [addUsage]);
+
+  const updateDevice = useCallback(async (id, updates) => {
+    let category = null;
+    Object.entries(usageData).forEach(([cat, items]) => {
+      if (items.some((i) => i.id === id)) category = cat;
+    });
+    if (!category) return;
+
+    setUsageData((prev) => ({
+      ...prev,
+      [category]: prev[category].map((item) => (item.id === id ? { ...item, ...updates } : item)),
+    }));
+
+    try {
+      const config = await getAuthConfig();
+      const current = usageData[category].find((i) => i.id === id);
+      await axios.put(
+        `${API_BASE_URL}/usage/${id}`,
+        {
+          category,
+          name: updates.name || current?.name,
+          watt: updates.watt || current?.watt,
+          time: updates.time || current?.time,
+        },
+        config
+      );
+    } catch (err) {
+      console.log('Update failed', err);
+    }
+  }, [usageData]);
+
+  const deleteDevice = useCallback(async (id) => {
+    for (const [category, items] of Object.entries(usageData)) {
+      if (items.find((i) => i.id === id)) {
+        await removeUsage(category, id);
+        return;
+      }
+    }
+  }, [usageData, removeUsage]);
+
+  const saveDailyRecord = useCallback((units, cost) => {
+    const today = new Date().toISOString().split('T')[0];
+    setDailyRecords((prev) => {
+      const filtered = prev.filter((r) => r.date !== today);
+      return [...filtered, { date: today, units, cost, timestamp: Date.now() }]
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    });
+  }, []);
 
   return (
     <UsageContext.Provider
-      value={{ usageData, addUsage, removeUsage, getUsage, fetchUsage, clearAllUsage }}
+      value={{
+        // Original
+        usageData, addUsage, removeUsage, getUsage, fetchUsage, clearAllUsage,
+        // New
+        devices, monthlyBudget, dailyRecords, firstEntryDate,
+        getAllDevices, getDeviceById, addDevice, updateDevice, deleteDevice,
+        setMonthlyBudget, saveDailyRecord,
+      }}
     >
       {children}
     </UsageContext.Provider>
@@ -120,7 +217,3 @@ export function UsageProvider({ children }) {
 }
 
 export const useUsage = () => useContext(UsageContext);
-
-export default function UsageContextRoute() {
-  return null;
-}
