@@ -26,18 +26,8 @@ const UsageTrackerComponent = ({ category, data }) => {
 
   const dropdownItems = [
     ...data.items,
-    {
-      name: "Custom",
-      watt: "Custom",
-    },
+    { name: "Custom", watt: "Custom" },
   ];
-
-  if (!data) {
-    return <Text>Data မရှိပါ</Text>;
-  }
-
-  const { addUsage, removeUsage, getUsage } = usageContext || {};
-  
 
   if (!data) {
     return (
@@ -50,49 +40,31 @@ const UsageTrackerComponent = ({ category, data }) => {
     );
   }
 
+  const { addUsage, removeUsage, getUsage } = usageContext || {};
+
   const [showPicker, setShowPicker] = useState(false);
   const [activeItemName, setActiveItemName] = useState('');
-  const [pickerValue, setPickerValue] = useState(new Date());
   const [tempHour, setTempHour] = useState(8);
   const [tempMinute, setTempMinute] = useState(0);
   const [selectedTimes, setSelectedTimes] = useState({});
-  
   const [customWatt, setCustomWatt] = useState('');
+
+  // Read directly from global context — no local pending state needed
   const currentUsage = getUsage(category) || [];
 
   const handleOpenPicker = (name) => {
-    console.log("OPEN PICKER ITEM:", name);
-    console.log("CURRENT selectedTimes:", selectedTimes);
-
     setActiveItemName(name);
-
     const currentTime = selectedTimes[name] || "8 hr 00 min";
-    console.log("CURRENT TIME USED:", currentTime);
-
     const hour = parseInt(currentTime.split("hr")[0].trim()) || 8;
     const minute = parseInt(currentTime.split("hr")[1].replace("min", "").trim()) || 0;
-
-    console.log("PARSED HOUR:", hour);
-    console.log("PARSED MINUTE:", minute);
-
-    const pickerDate = new Date(2000, 0, 1, hour, minute, 0);
-    console.log("PICKER DATE:", pickerDate);
-
     setTempHour(hour);
     setTempMinute(minute);
-    setPickerValue(pickerDate);
     setShowPicker(true);
   };
 
   const handleConfirmTime = () => {
     const newTime = `${tempHour} hr ${tempMinute.toString().padStart(2, '0')} min`;
-
-    setSelectedTimes(prev => ({
-      ...prev,
-      [activeItemName]: newTime
-    }));
-
-    setPickerValue(new Date(2000, 0, 1, tempHour, tempMinute, 0));
+    setSelectedTimes(prev => ({ ...prev, [activeItemName]: newTime }));
     setShowPicker(false);
   };
 
@@ -104,9 +76,7 @@ const UsageTrackerComponent = ({ category, data }) => {
       return;
     }
 
-    const finalWatt = item.name === 'Custom'
-      ? `${customWatt}W`
-      : item.watt;
+    const finalWatt = item.name === 'Custom' ? `${customWatt}W` : item.watt;
 
     const newItem = {
       id: Date.now().toString(),
@@ -115,6 +85,7 @@ const UsageTrackerComponent = ({ category, data }) => {
       time: timeDisplay,
     };
 
+    // ✅ FIX: Persist to global context so home screen can read it
     addUsage(category, newItem);
 
     if (item.name === 'Custom') {
@@ -145,24 +116,16 @@ const UsageTrackerComponent = ({ category, data }) => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
 
           <View style={styles.headerContainer}>
             <Text style={styles.sectionTitle}>{data.title} - Add Usage Details</Text>
 
-            {/* Main Device Card */}
-            <View style={{ position: 'relative' }}>     
-
+            <View style={{ position: 'relative' }}>
               <View style={styles.card}>
-                <Text style={styles.inputLabel}>
-                  Select Appliance
-                </Text>
-                {/* Watt Dropdown */}
+                <Text style={styles.inputLabel}>Select Appliance</Text>
                 <View style={{ flex: 1 }}>
                   <TouchableOpacity
                     style={styles.dropdownButton}
@@ -171,7 +134,6 @@ const UsageTrackerComponent = ({ category, data }) => {
                     <Text style={styles.cardTitle}>
                       {selectedItem.watt} ({selectedItem.name})
                     </Text>
-
                     <Ionicons
                       name={showDropdown ? "chevron-up" : "chevron-down"}
                       size={18}
@@ -192,9 +154,7 @@ const UsageTrackerComponent = ({ category, data }) => {
                   )}
                 </View>
 
-                <Text style={styles.inputLabel}>
-                  Daily Usage Time
-                </Text>
+                <Text style={styles.inputLabel}>Daily Usage Time</Text>
 
                 <TouchableOpacity
                   style={styles.timePicker}
@@ -203,12 +163,7 @@ const UsageTrackerComponent = ({ category, data }) => {
                   <Text style={styles.timeText}>
                     {selectedTimes[selectedItem?.name] || "8 hr 00 min"}
                   </Text>
-
-                  <Ionicons
-                    name="chevron-down"
-                    size={18}
-                    color="white"
-                  />
+                  <Ionicons name="chevron-down" size={18} color="white" />
                 </TouchableOpacity>
 
                 <View style={{ alignItems: 'flex-end', width: '100%' }}>
@@ -217,9 +172,7 @@ const UsageTrackerComponent = ({ category, data }) => {
                     onPress={() => submitToUsage(selectedItem)}
                   >
                     <Ionicons name="add-circle-outline" size={20} color="white" />
-                    <Text style={styles.addButtonText}>
-                      Add Appliance
-                    </Text>
+                    <Text style={styles.addButtonText}>Add Appliance</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -233,11 +186,8 @@ const UsageTrackerComponent = ({ category, data }) => {
                       onPress={() => {
                         setSelectedItem(item);
                         setShowDropdown(false);
-
                         if (item.name === "Custom") {
-                          setTimeout(() => {
-                            inputRef.current?.focus();
-                          }, 100);
+                          setTimeout(() => inputRef.current?.focus(), 100);
                         }
                       }}
                     >
@@ -248,7 +198,7 @@ const UsageTrackerComponent = ({ category, data }) => {
                   ))}
                 </View>
               )}
-            </View> 
+            </View>
 
             <Text style={styles.sectionTitle}>Current Usage</Text>
           </View>
@@ -295,7 +245,6 @@ const UsageTrackerComponent = ({ category, data }) => {
             </View>
 
             <View style={styles.wheelsContainer}>
-              {/* Hour Wheel */}
               <View style={styles.wheelColumn}>
                 <Text style={styles.wheelLabel}>Hour</Text>
                 <View style={styles.wheelWrapper}>
@@ -326,7 +275,6 @@ const UsageTrackerComponent = ({ category, data }) => {
                 </View>
               </View>
 
-              {/* Minute Wheel */}
               <View style={styles.wheelColumn}>
                 <Text style={styles.wheelLabel}>Minute</Text>
                 <View style={styles.wheelWrapper}>

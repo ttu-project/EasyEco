@@ -2,27 +2,28 @@ import React from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
 import { useUsage } from './Usage/UsageContext';
 import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
 import { useLanguage } from './context/LanguageContext';
 
-// ===== COMPONENT =====
-export default function UsageDetail() {
-  const router = useRouter();
-  const { type } = useLocalSearchParams();
+export default function UsageDetail({
+  visible,
+  onClose,
+  type = "current",
+  currentUnits,
+  currentCost,
+  estimatedUnits,
+  estimatedCost,
+}) {
   const { getUsage } = useUsage();
   const { t } = useLanguage();
-  const {
-    allItems,
-    totalDailyUnits,
-    totalMonthlyUnits,
-    totalDailyCost,
-    totalMonthlyCost,
-  } = summarizeUsageBill(getUsage);
 
   const isCurrent = type === 'current';
+
+  // Itemized list from single source of truth
+  const { allItems } = summarizeUsageBill(getUsage);
+
   const displayItems = allItems.map(item => ({
     ...item,
     units: isCurrent ? item.dailyUnits : item.monthlyUnits,
@@ -31,22 +32,19 @@ export default function UsageDetail() {
 
   return (
     <Modal
-      visible={true}
+      visible={visible}
       transparent={true}
       animationType="slide"
-      onRequestClose={() => router.back()}
+      onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
-          {/* Close Button */}
-          <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <AntDesign name="close" size={20} color="#333" />
           </TouchableOpacity>
 
-          {/* Title */}
           <Text style={styles.title}>{t('averageTotalConsumption')}</Text>
 
-          {/* Table Header */}
           <View style={styles.tableRow}>
             <Text style={[styles.headerCell, { flex: 1.5 }]}>{t('devices')}</Text>
             <Text style={[styles.headerCell, { flex: 1, textAlign: 'center' }]}>{t('units')}</Text>
@@ -55,7 +53,6 @@ export default function UsageDetail() {
 
           <View style={styles.divider} />
 
-          {/* Scrollable List */}
           <ScrollView style={styles.scrollArea}>
             {displayItems.map((item) => (
               <View key={item.id} style={styles.tableRow}>
@@ -68,25 +65,23 @@ export default function UsageDetail() {
 
           <View style={styles.divider} />
 
-          {/* Summary */}
+          {/* Summary uses props from parent — guaranteed identical to Home card */}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('currentUsage')}</Text>
-            <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} {t('units')}</Text>
-            <Text style={styles.summaryCost}>{formatCost(totalDailyCost)} MMK</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(currentUnits)} {t('units')}</Text>
+            <Text style={styles.summaryCost}>{formatCost(currentCost)} MMK</Text>
           </View>
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('estimatedTotal')}</Text>
-            <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} {t('units')}</Text>
-            <Text style={styles.summaryCost}>{formatCost(totalMonthlyCost)} MMK</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(estimatedUnits)} {t('units')}</Text>
+            <Text style={styles.summaryCost}>{formatCost(estimatedCost)} MMK</Text>
           </View>
         </View>
       </View>
     </Modal>
   );
 }
-
-// ===== STYLES =====
 
 const styles = StyleSheet.create({
   overlay: {
@@ -95,7 +90,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 20,
-   
   },
   card: {
     width: '100%',
@@ -108,9 +102,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
-     borderColor:'#1658C3',
-    borderWidth:3
-    
+    borderColor: '#1658C3',
+    borderWidth: 3,
   },
   closeBtn: {
     alignSelf: 'flex-end',

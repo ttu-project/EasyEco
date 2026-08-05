@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
-import { generateDetailedRecommendations } from '../utils/recommendation';
+import { generateDetailedRecommendations } from '../utils/billing';
 
 const ICON_MAP = {
   fridge: require('../../assets/Refigerator.png'),
@@ -30,10 +30,12 @@ const BackIcon = () => (
 
 export default function Recommendations() {
   const router = useRouter();
-  const { devices, monthlyBudget, dailyRecords } = useUsage();
+  // ✅ FIX: get getUsage from context
+  const { getUsage, monthlyBudget, dailyRecords } = useUsage();
 
+  // ✅ FIX: pass getUsage as the first argument
   const { isOverBudget, recommendations, targetSavings } =
-    generateDetailedRecommendations(devices, dailyRecords, monthlyBudget);
+    generateDetailedRecommendations(getUsage, dailyRecords, monthlyBudget);
 
   const renderIcon = (type) => {
     const src = ICON_MAP[type];

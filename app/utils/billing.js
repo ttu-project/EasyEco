@@ -57,10 +57,8 @@ export const summarizeUsageBill = (getUsage) => {
     }
   });
 
-  const current = Math.round(dailyUnits);
-  const estimated = current * 30;
-  const totalDailyCost = calculateMeterBill(current);
-  const totalMonthlyCost = calculateMeterBill(estimated);
+  const totalDailyCost = calculateMeterBill(dailyUnits);
+  const totalMonthlyCost = calculateMeterBill(monthlyUnits);
 
   BILLING_CATEGORIES.forEach((category) => {
     const specs = getUsage(category);
@@ -77,10 +75,13 @@ export const summarizeUsageBill = (getUsage) => {
           id: spec.id,
           name: spec.name,
           watt: spec.watt,
-          dailyUnits: Math.round(daily),
-          monthlyUnits: Math.round(monthly),
-          dailyCost: Math.round(itemDailyCost),
-          monthlyCost: Math.round(itemMonthlyCost),
+          time: spec.time,
+          category: category,
+          hoursPerDay,
+          dailyUnits: daily,
+          monthlyUnits: monthly,
+          dailyCost: itemDailyCost,
+          monthlyCost: itemMonthlyCost,
         });
       });
     }
@@ -88,8 +89,8 @@ export const summarizeUsageBill = (getUsage) => {
 
   return {
     allItems,
-    totalDailyUnits: current,
-    totalMonthlyUnits: estimated,
+    totalDailyUnits: dailyUnits,
+    totalMonthlyUnits: monthlyUnits,
     totalDailyCost,
     totalMonthlyCost,
   };
@@ -97,34 +98,29 @@ export const summarizeUsageBill = (getUsage) => {
 
 export const formatUnits = (units) => {
   const value = Number(units) || 0;
-  if (value > 0 && value < 1) return value.toFixed(2);
-  return Math.round(value).toString();
+  if (value === 0) return '0';
+  if (value < 1) {
+    return parseFloat(value.toFixed(2)).toString();
+  }
+  return parseFloat(value.toFixed(1)).toString();
 };
 
-export const formatCost = (cost) => Math.round(Number(cost) || 0).toLocaleString();
-
-// ============================================================
-// NEW: Forecast & Recommendation logic (merged from forecast.js)
-// ============================================================
+export const formatCost = (cost) => {
+  return Math.round(Number(cost) || 0).toLocaleString();
+};
 
 const getDaysInMonth = (year, month) => new Date(year, month, 0).getDate();
 
-export const getForecast = (devices, dailyRecords, monthlyBudget) => {
+export const getForecast = (getUsage, dailyRecords, monthlyBudget) => {
   const now = new Date();
   const today = now.getDate();
   const totalDays = getDaysInMonth(now.getFullYear(), now.getMonth() + 1);
   const daysRemaining = totalDays - today;
 
-  // Current daily rate based on latest device settings
-  let currentDailyUnits = 0;
-  devices.forEach((d) => {
-    const w = parseWatt(d.watt);
-    const h = parseTimeToHours(d.time);
-    currentDailyUnits += (w * h) / 1000;
-  });
-  const currentDailyCost = calculateMeterBill(currentDailyUnits);
+  const bill = summarizeUsageBill(getUsage);
+  const currentDailyUnits = bill.totalDailyUnits;
+  const currentDailyCost = bill.totalDailyCost;
 
-  // Actual recorded history
   let actualUnits = 0;
   let actualCost = 0;
   dailyRecords.forEach((r) => {
@@ -140,19 +136,19 @@ export const getForecast = (devices, dailyRecords, monthlyBudget) => {
   const overBudget = estimatedCost - monthlyBudget;
 
   return {
-    currentDailyUnits: Math.round(currentDailyUnits * 10) / 10,
-    currentDailyCost: Math.round(currentDailyCost),
-    actualUnits: Math.round(actualUnits * 10) / 10,
-    actualCost: Math.round(actualCost),
-    projectedUnits: Math.round(projectedUnits * 10) / 10,
-    projectedCost: Math.round(projectedCost),
-    estimatedUnits: Math.round(estimatedUnits),
-    estimatedCost: Math.round(estimatedCost),
+    currentDailyUnits,
+    currentDailyCost,
+    actualUnits,
+    actualCost,
+    projectedUnits,
+    projectedCost,
+    estimatedUnits,
+    estimatedCost,
     daysRemaining,
     totalDays,
     today,
     isOverBudget: overBudget > 0,
-    overBudgetAmount: Math.max(0, Math.round(overBudget)),
+    overBudgetAmount: Math.max(0, overBudget),
     daysWithData: dailyRecords.length,
   };
 };
@@ -208,3 +204,53 @@ export const getBudgetStatus = (estimatedCost, monthlyBudget) => {
     alertType: 'success',
   };
 };
+
+// ============================================================
+// Detailed Recommendations — lives in same file, no imports needed
+// ============================================================
+export function generateDetailedRecommendations(getUsage, dailyRecords, monthlyBudget) {
+  const forecast = getForecast(getUsage, dailyRecords, monthlyBudget);
+
+  if (!forecast.isOverBudget) {
+    return { isOverBudget: false, recommendations: [], targetSavings: 0 };
+  }
+
+  const targetSavings = forecast.overBudgetAmount;
+  const { allItems } = summarizeUsageBill(getUsage);
+
+  let accumulated = 0;
+  const out = [];
+
+  const ranked = [...allItems]
+    .filter((d) => d.monthlyCost > 0 && d.hoursPerDay > 0)
+    .sort((a, b) => b.monthlyCost - a.monthlyCost);
+
+  for (const d of ranked) {
+    if (accumulated >= targetSavings) break;
+
+    let savedHrs = Math.round(d.hoursPerDay * 0.20 * 2) / 2;
+    if (savedHrs < 0.5) savedHrs = Math.min(0.5, d.hoursPerDay);
+
+    const ratio = savedHrs / d.hoursPerDay;
+    let savedCost = Math.round(d.monthlyCost * ratio);
+
+    if (accumulated + savedCost > targetSavings * 1.5 && out.length >= 1) {
+      savedCost = Math.max(0, Math.round(targetSavings - accumulated));
+      if (savedCost <= 0) break;
+    }
+
+    if (savedCost > 0) {
+      out.push({
+        id: d.id,
+        categoryId: d.category,
+        name: d.name,
+        iconType: d.category,
+        recommendation: `Reduce ${d.name} usage by ${savedHrs} hrs/day.`,
+        savings: savedCost,
+      });
+      accumulated += savedCost;
+    }
+  }
+
+  return { isOverBudget: true, targetSavings, recommendations: out };
+}

@@ -3,11 +3,17 @@ import {
   SafeAreaView, ScrollView, Modal, TextInput, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
-import { getForecast, generateRecommendation } from '../utils/billing';
+import { 
+  getForecast, 
+  generateRecommendation,
+  formatUnits,
+  formatCost,
+} from '../utils/billing';
 import { useLanguage } from '../context/LanguageContext';
+import UsageDetail from '../UsageDetail';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2;
@@ -59,6 +65,7 @@ export default function Calculate() {
 
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
+  const [usageModalVisible, setUsageModalVisible] = useState(false);
 
   const [currentUnits, setCurrentUnits] = useState(0);
   const [currentCost, setCurrentCost] = useState(0);
@@ -70,17 +77,16 @@ export default function Calculate() {
     isOverBudget: false, overBudgetAmount: 0, alertMessage: '', alertType: 'success'
   });
 
+  const handleOpenUsageModal = () => setUsageModalVisible(true);
+  const handleCloseUsageModal = () => setUsageModalVisible(false);
+
   const [resultModalVisible, setResultModalVisible] = useState(false);
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(monthlyBudget));
 
-  useEffect(() => {
-    runForecast(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [devices, monthlyBudget, dailyRecords]);
-
+  // ✅ FIX: pass getUsage instead of devices
   const runForecast = useCallback((shouldSaveToday = false) => {
-    const forecast = getForecast(devices, dailyRecords, monthlyBudget);
+    const forecast = getForecast(getUsage, dailyRecords, monthlyBudget);
 
     setCurrentUnits(forecast.currentDailyUnits);
     setCurrentCost(forecast.currentDailyCost);
@@ -91,7 +97,7 @@ export default function Calculate() {
       isOverBudget: forecast.isOverBudget,
       overBudgetAmount: forecast.overBudgetAmount,
       alertMessage: forecast.isOverBudget
-        ? `You are ${forecast.overBudgetAmount.toLocaleString()} MMK over your budget.`
+        ? `You are ${formatCost(forecast.overBudgetAmount)} MMK over your budget.`
         : 'You are within the budget.',
       alertType: forecast.isOverBudget ? 'warning' : 'success',
     });
@@ -101,10 +107,10 @@ export default function Calculate() {
     if (shouldSaveToday) {
       saveDailyRecord(forecast.currentDailyUnits, forecast.currentDailyCost);
     }
-  }, [devices, dailyRecords, monthlyBudget, saveDailyRecord]);
+  }, [getUsage, dailyRecords, monthlyBudget, devices, saveDailyRecord]);
 
   const handleCalculatePress = () => {
-    runForecast(true);
+    runForecast(false);
     setResultModalVisible(true);
   };
 
@@ -170,41 +176,52 @@ export default function Calculate() {
       <View style={styles.mainContent}>
         <Text style={styles.mainTitle}>{t('estimatedMonthlyBill')}</Text>
 
-        {/* Bill Card */}
-        <View style={styles.billCard}>
-          <View style={styles.budgetRow}>
-            <Text style={styles.budgetText}>Monthly Budget Goal : {monthlyBudget} MMK</Text>
-            <TouchableOpacity style={styles.setBudgetButton} onPress={handleOpenBudgetModal}>
-              <Text style={styles.setBudgetText}>✎ SET BUDGET</Text>
-            </TouchableOpacity>
-          </View>
+        <TouchableOpacity activeOpacity={0.9} onPress={handleOpenUsageModal}>
+          <View style={styles.billCard}>
+            <View style={styles.budgetRow}>
+              <Text style={styles.budgetText}>Monthly Budget Goal : {monthlyBudget} MMK</Text>
+              <TouchableOpacity style={styles.setBudgetButton} onPress={handleOpenBudgetModal}>
+                <Text style={styles.setBudgetText}>✎ SET BUDGET</Text>
+              </TouchableOpacity>
 
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, { flex: 1.2 }]} />
-            <Text style={styles.tableHeaderText}>{t('energyUsage')}</Text>
-            <Text style={styles.tableHeaderText}>{t('electricityBill')}</Text>
-          </View>
-          <View style={styles.tableRow}>
-            <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
-            <Text style={styles.rowValue}>{currentUnits} {t('units')}</Text>
-            <Text style={styles.rowValue}>{currentCost.toLocaleString()} MMK</Text>
-          </View>
-          <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
-            <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
-            <Text style={styles.rowValue}>{estimatedUnits} {t('units')}</Text>
-            <Text style={styles.rowValue}>{estimatedCost.toLocaleString()} MMK</Text>
-          </View>
-        </View>
+              <UsageDetail
+                visible={usageModalVisible}
+                onClose={handleCloseUsageModal}
+                type="current"
+                currentUnits={currentUnits}
+                currentCost={currentCost}
+                estimatedUnits={estimatedUnits}
+                estimatedCost={estimatedCost}
+              />
+            </View>
 
-        {/* Recommendation Banner */}
-        <View style={styles.recommendationBanner}>
-          <Text style={styles.recommendationText} numberOfLines={1}>
-            <Text style={styles.recommendationBold}>Recommendations &gt;&gt; </Text>
-            {recommendationText}
-          </Text>
-        </View>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeaderText, { flex: 1.2 }]} />
+              <Text style={styles.tableHeaderText}>{t('energyUsage')}</Text>
+              <Text style={styles.tableHeaderText}>{t('electricityBill')}</Text>
+            </View>
+            <View style={styles.tableRow}>
+              <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
+              <Text style={styles.rowValue}>{formatUnits(currentUnits)} {t('units')}</Text>
+              <Text style={styles.rowValue}>{formatCost(currentCost)} MMK</Text>
+            </View>
+            <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
+              <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
+              <Text style={styles.rowValue}>{formatUnits(estimatedUnits)} {t('units')}</Text>
+              <Text style={styles.rowValue}>{formatCost(estimatedCost)} MMK</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
 
-        {/* Section Header */}
+        <TouchableOpacity>
+          <View style={styles.recommendationBanner}>
+            <Text style={styles.recommendationText} numberOfLines={1}>
+              <Text style={styles.recommendationBold}>Recommendations &gt;&gt; </Text>
+              {recommendationText}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>{t('trackDurationWattage')}</Text>
           <TouchableOpacity
@@ -215,7 +232,6 @@ export default function Calculate() {
           </TouchableOpacity>
         </View>
 
-        {/* Device Grid */}
         <View style={styles.swiperWrapper}>
           <ScrollView
             ref={scrollViewRef}
@@ -260,7 +276,6 @@ export default function Calculate() {
         </TouchableOpacity>
       </View>
 
-      {/* Result Modal — photo 3 style */}
       <Modal animationType="fade" transparent visible={resultModalVisible}>
         <View style={styles.resultModalOverlay}>
           <Pressable style={styles.resultModalBackdrop} onPress={() => setResultModalVisible(false)} />
@@ -272,7 +287,7 @@ export default function Calculate() {
               <Text style={styles.alertText}>
                 {budgetStatus.alertType === 'warning' ? (
                   <>
-                    You are <Text style={styles.alertAmountOver}>{budgetStatus.overBudgetAmount.toLocaleString()}</Text> MMK over your budget.
+                    You are <Text style={styles.alertAmountOver}>{formatCost(budgetStatus.overBudgetAmount)}</Text> MMK over your budget.
                   </>
                 ) : (
                   <Text style={styles.alertAmountSafe}>You are within the budget.</Text>
@@ -281,9 +296,9 @@ export default function Calculate() {
             </View>
             {budgetStatus.isOverBudget && (
               <TouchableOpacity style={styles.viewRecLink} onPress={() => {
-    setResultModalVisible(false);
-    router.push({ pathname: '../Recommendations/Recommendations' });
-  }}>
+                setResultModalVisible(false);
+                router.push({ pathname: '../Recommendations/Recommendations' });
+              }}>
                 <Text style={styles.viewRecText}>View Recommendations →</Text>
               </TouchableOpacity>
             )}
@@ -291,36 +306,35 @@ export default function Calculate() {
         </View>
       </Modal>
 
-      {/* Budget Modal */}
-     <Modal animationType="fade" transparent visible={budgetModalVisible}>
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContent}>
-      <Text style={styles.modalTitle}>Set Monthly Budget Goal</Text>
+      <Modal animationType="fade" transparent visible={budgetModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Set Monthly Budget Goal</Text>
 
-      <Text style={styles.modalLabel}>Monthly Budget</Text>
-      <View style={styles.modalInputWrapper}>
-        <TextInput
-          style={styles.modalInput}
-          keyboardType="numeric"
-          value={budgetInput}
-          onChangeText={setBudgetInput}
-          placeholder="Enter amount (e.g. 50,000)"
-          placeholderTextColor="#9CA3AF"
-        />
-        <Text style={styles.modalInputSuffix}>MMK</Text>
-      </View>
+            <Text style={styles.modalLabel}>Monthly Budget</Text>
+            <View style={styles.modalInputWrapper}>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="numeric"
+                value={budgetInput}
+                onChangeText={setBudgetInput}
+                placeholder="Enter amount (e.g. 50,000)"
+                placeholderTextColor="#9CA3AF"
+              />
+              <Text style={styles.modalInputSuffix}>MMK</Text>
+            </View>
 
-      <View style={styles.modalButtons}>
-        <TouchableOpacity style={styles.modalButtonCancel} onPress={() => setBudgetModalVisible(false)}>
-          <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.modalButtonSave} onPress={handleSaveBudget}>
-          <Text style={styles.modalButtonTextSave}>Save Budget</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalButtonCancel} onPress={() => setBudgetModalVisible(false)}>
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalButtonSave} onPress={handleSaveBudget}>
+                <Text style={styles.modalButtonTextSave}>Save Budget</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -328,9 +342,7 @@ export default function Calculate() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
   mainContent: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
-
   mainTitle: { fontSize: 20, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 9 },
-
   billCard: {
     backgroundColor: '#2167E1',
     borderRadius: 16,
@@ -365,7 +377,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
-
   tableHeader: { flexDirection: 'row', marginBottom: 4 },
   tableHeaderText: {
     flex: 1,
@@ -389,7 +400,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-
   recommendationBanner: {
     backgroundColor: '#0D2A4A',
     borderRadius: 20,
@@ -400,7 +410,6 @@ const styles = StyleSheet.create({
   },
   recommendationText: { color: '#FFF', fontSize: 12 },
   recommendationBold: { fontWeight: 'bold', color: '#FFF' },
-
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -415,7 +424,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   myDevicesText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
-
   swiperWrapper: { width: '100%' },
   pageContainer: { width: SCREEN_WIDTH - 40 },
   gridContainer: {
@@ -483,8 +491,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   buttonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-
-  /* Result Modal — photo 3 style */
   resultModalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -530,83 +536,81 @@ const styles = StyleSheet.create({
   },
   viewRecLink: { marginTop: 12 },
   viewRecText: { color: '#1958CE', fontWeight: '600', fontSize: 13 },
-
-  /* Budget Modal */
   modalOverlay: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.4)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-modalContent: {
-  backgroundColor: '#FFF',
-  borderRadius: 20,
-  padding: 24,
-  width: '85%',
-  alignItems: 'center',
-},
-modalTitle: {
-  fontSize: 17,
-  fontWeight: '700',
-  color: '#111827',
-  marginBottom: 20,
-},
-modalLabel: {
-  alignSelf: 'flex-start',
-  fontSize: 13,
-  color: '#374151',
-  fontWeight: '500',
-  marginBottom: 6,
-},
-modalInputWrapper: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  width: '100%',
-  backgroundColor: '#F3F4F6',
-  borderRadius: 10,
-  paddingHorizontal: 12,
-  marginBottom: 20,
-},
-modalInput: {
-  flex: 1,
-  paddingVertical: 12,
-  fontSize: 15,
-  color: '#111827',
-},
-modalInputSuffix: {
-  fontSize: 14,
-  color: '#6B7280',
-  fontWeight: '500',
-  marginLeft: 4,
-},
-modalButtons: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  width: '100%',
-  gap: 12,
-},
-modalButtonCancel: {
-  flex: 1,
-  paddingVertical: 12,
-  borderRadius: 10,
-  backgroundColor: '#E5E7EB',
-  alignItems: 'center',
-},
-modalButtonSave: {
-  flex: 1,
-  paddingVertical: 12,
-  borderRadius: 10,
-  backgroundColor: '#1958CE',
-  alignItems: 'center',
-},
-modalButtonTextCancel: {
-  color: '#374151',
-  fontWeight: '600',
-  fontSize: 14,
-},
-modalButtonTextSave: {
-  color: '#FFF',
-  fontWeight: '600',
-  fontSize: 14,
-},
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 20,
+  },
+  modalLabel: {
+    alignSelf: 'flex-start',
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  modalInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginBottom: 20,
+  },
+  modalInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827',
+  },
+  modalInputSuffix: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  modalButtonSave: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#1958CE',
+    alignItems: 'center',
+  },
+  modalButtonTextCancel: {
+    color: '#374151',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalButtonTextSave: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
 });

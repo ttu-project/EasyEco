@@ -14,6 +14,7 @@ export function UsageProvider({ children }) {
   const [monthlyBudget, setMonthlyBudget] = useState(100);
   const [dailyRecords, setDailyRecords] = useState([]);
   const [firstEntryDate, setFirstEntryDate] = useState(null);
+  const [isReady, setIsReady] = useState(false);
 
   // ===== LOAD LOCAL DATA ON MOUNT =====
   useEffect(() => {
@@ -29,6 +30,8 @@ export function UsageProvider({ children }) {
         if (r) setDailyRecords(JSON.parse(r));
       } catch (e) {
         console.error('Local load error', e);
+      } finally {
+        setIsReady(true);
       }
     };
     loadLocal();
@@ -200,15 +203,95 @@ export function UsageProvider({ children }) {
     });
   }, []);
 
+  /* ───────────────────────────────
+     FORECAST & DAILY USAGE HELPERS
+     ─────────────────────────────── */
+
+  const getDailyUsage = useCallback((dateString) => {
+    const exact = dailyRecords.find((r) => r.date === dateString);
+    if (exact) return exact.units;
+
+    const target = new Date(dateString + 'T00:00:00');
+    const previous = dailyRecords
+      .filter((r) => new Date(r.date + 'T00:00:00') < target)
+      .sort((a, b) => new Date(b.date + 'T00:00:00') - new Date(a.date + 'T00:00:00'));
+
+    if (previous.length > 0) return previous[0].units;
+    return 0;
+  }, [dailyRecords]);
+
+  const getForecast = useCallback(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const currentDay = today.getDate();
+
+    // Sum recorded (or fallback) units from day 1 up to today
+    let currentMonthUnits = 0;
+    for (let d = 1; d <= currentDay; d++) {
+      const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      currentMonthUnits += getDailyUsage(ds);
+    }
+
+    const avgDaily = currentDay > 0 ? currentMonthUnits / currentDay : 0;
+    const remainingDays = daysInMonth - currentDay;
+    const estimatedRemaining = avgDaily * remainingDays;
+    const estimatedUnits = Math.round(currentMonthUnits + estimatedRemaining);
+
+    // Myanmar-style tiered rates — adjust to match your real tariff
+    const calculateCost = (units) => {
+      let cost = 0;
+      let remaining = units;
+      const tiers = [
+        { limit: 30, rate: 35 },
+        { limit: 50, rate: 50 },
+        { limit: 75, rate: 70 },
+        { limit: 100, rate: 90 },
+        { limit: 150, rate: 110 },
+        { limit: 200, rate: 120 },
+        { limit: Infinity, rate: 125 },
+      ];
+      for (const t of tiers) {
+        if (remaining <= 0) break;
+        const u = Math.min(remaining, t.limit);
+        cost += u * t.rate;
+        remaining -= u;
+      }
+      return Math.round(cost);
+    };
+
+    const currentDailyCost = calculateCost(Math.round(currentMonthUnits));
+    const estimatedCost = calculateCost(estimatedUnits);
+
+    const isOverBudget = estimatedCost > monthlyBudget;
+    const overBudgetAmount = isOverBudget ? estimatedCost - monthlyBudget : 0;
+    const avgRate = estimatedUnits > 0 ? estimatedCost / estimatedUnits : 0;
+
+    return {
+      currentDailyUnits: Math.round(currentMonthUnits),
+      currentDailyCost,
+      estimatedUnits,
+      estimatedCost,
+      isOverBudget,
+      overBudgetAmount,
+      avgRate,
+      daysInMonth,
+      currentDay,
+    };
+  }, [dailyRecords, monthlyBudget, getDailyUsage]);
+
   return (
     <UsageContext.Provider
       value={{
         // Original
         usageData, addUsage, removeUsage, getUsage, fetchUsage, clearAllUsage,
         // New
-        devices, monthlyBudget, dailyRecords, firstEntryDate,
+        devices, monthlyBudget, dailyRecords, firstEntryDate, isReady,
         getAllDevices, getDeviceById, addDevice, updateDevice, deleteDevice,
         setMonthlyBudget, saveDailyRecord,
+        // Forecast
+        getForecast, getDailyUsage,
       }}
     >
       {children}
