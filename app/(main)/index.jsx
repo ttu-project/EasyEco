@@ -213,7 +213,7 @@ export default function Calculate() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity>
+        <TouchableOpacity  onPress={() => router.push({ pathname: '../Recommendations/Recommendations' })}>
           <View style={styles.recommendationBanner}>
             <Text style={styles.recommendationText} numberOfLines={1}>
               <Text style={styles.recommendationBold}>Recommendations &gt;&gt; </Text>
