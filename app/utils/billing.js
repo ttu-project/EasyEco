@@ -206,7 +206,7 @@ export const getBudgetStatus = (estimatedCost, monthlyBudget) => {
 };
 
 // ============================================================
-// Detailed Recommendations — lives in same file, no imports needed
+// Detailed Recommendations
 // ============================================================
 export function generateDetailedRecommendations(getUsage, dailyRecords, monthlyBudget) {
   const forecast = getForecast(getUsage, dailyRecords, monthlyBudget);
@@ -234,22 +234,23 @@ export function generateDetailedRecommendations(getUsage, dailyRecords, monthlyB
     const ratio = savedHrs / d.hoursPerDay;
     let savedCost = Math.round(d.monthlyCost * ratio);
 
-    if (accumulated + savedCost > targetSavings * 1.5 && out.length >= 1) {
-      savedCost = Math.max(0, Math.round(targetSavings - accumulated));
-      if (savedCost <= 0) break;
+    // ✅ FIX: hard cap so total savings never exceed the over-budget amount
+    const remainingNeeded = targetSavings - accumulated;
+    if (savedCost > remainingNeeded) {
+      savedCost = Math.max(0, remainingNeeded);
     }
 
-    if (savedCost > 0) {
-      out.push({
-        id: d.id,
-        categoryId: d.category,
-        name: d.name,
-        iconType: d.category,
-        recommendation: `Reduce ${d.name} usage by ${savedHrs} hrs/day.`,
-        savings: savedCost,
-      });
-      accumulated += savedCost;
-    }
+    if (savedCost <= 0) break;
+
+    out.push({
+      id: d.id,
+      categoryId: d.category,
+      name: d.name,
+      iconType: d.category,
+      recommendation: `Reduce ${d.name} usage by ${savedHrs} hrs/day.`,
+      savings: savedCost,
+    });
+    accumulated += savedCost;
   }
 
   return { isOverBudget: true, targetSavings, recommendations: out };
