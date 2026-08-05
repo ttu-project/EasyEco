@@ -10,7 +10,11 @@ export default function Dashboard() {
   /* ── budget numbers (same source of truth as Home card) ── */
   const forecast = getForecast(getUsage, dailyRecords, monthlyBudget);
   const estimatedCost = forecast.estimatedCost;
-  const percentage = monthlyBudget > 0 ? Math.round((estimatedCost / monthlyBudget) * 100) : 0;
+  
+  // Raw percentage for over-budget checks, capped percentage for display
+  const rawPercentage = monthlyBudget > 0 ? Math.round((estimatedCost / monthlyBudget) * 100) : 0;
+  const displayPercentage = Math.min(rawPercentage, 100);
+  const isOverBudget = rawPercentage > 100;
   const remaining = Math.max(monthlyBudget - estimatedCost, 0);
 
   /* ── consumption breakdown (same source of truth as UsageDetail) ── */
@@ -38,8 +42,8 @@ export default function Dashboard() {
   const stroke = 10;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const offset = c - (c * Math.min(percentage, 100)) / 100;
-  const ringColor = percentage > 100 ? '#EF4444' : '#22C55E';
+  const offset = c - (c * displayPercentage) / 100;
+  const ringColor = isOverBudget ? '#EF4444' : '#22C55E';
 
   if (!isReady) {
     return (
@@ -70,13 +74,13 @@ export default function Dashboard() {
               </G>
             </Svg>
             <View style={styles.circleText}>
-              <Text style={styles.percentText}>{percentage}%</Text>
+              <Text style={styles.percentText}>{displayPercentage}%</Text>
               <Text style={styles.percentSub}>of budget used</Text>
             </View>
           </View>
 
-          <Text style={[styles.status, { color: percentage > 100 ? '#DC2626' : '#059669' }]}>
-            {percentage > 100 ? 'You have exceeded your budget.' : "Great job! You're within your budget."}
+          <Text style={[styles.status, { color: isOverBudget ? '#DC2626' : '#059669' }]}>
+            {isOverBudget ? 'You have exceeded your budget.' : "Great job! You're within your budget."}
           </Text>
 
           <View style={styles.divider} />
