@@ -234,7 +234,7 @@ export function generateDetailedRecommendations(getUsage, dailyRecords, monthlyB
     const ratio = savedHrs / d.hoursPerDay;
     let savedCost = Math.round(d.monthlyCost * ratio);
 
-    // ✅ FIX: hard cap so total savings never exceed the over-budget amount
+    
     const remainingNeeded = targetSavings - accumulated;
     if (savedCost > remainingNeeded) {
       savedCost = Math.max(0, remainingNeeded);

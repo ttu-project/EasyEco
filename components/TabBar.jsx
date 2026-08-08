@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Bot from '../assets/Bot.svg';
 import Graph from '../assets/Graph.svg';
 import Home from '../assets/Home.svg';
-import Point from '../assets/Point.svg';
+import Point from '../assets/notifications.svg';
 import User from '../assets/User.svg';
 import Svg, { Path } from 'react-native-svg';
 
@@ -97,7 +97,7 @@ export function TabBar({ state, descriptors, navigation }) {
               const name = route.name.toLowerCase();
               if (name === 'index') return <HomeIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
               if (name === 'analytics') return <ChartIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
-              if (name === 'finance') return <DollarIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
+              if (name === 'finance') return <DollarIcon color={isFocused ? colors.accent : colors.inactive} size={28} />;
               return <UserIcon color={isFocused ? colors.accent : colors.inactive} size={24} />;
             };
             

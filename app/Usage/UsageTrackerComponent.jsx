@@ -250,28 +250,47 @@ const UsageTrackerComponent = ({ category, data }) => {
                 <View style={styles.wheelWrapper}>
                   <View style={styles.selectionIndicator} />
                   <FlatList
-                    data={Array.from({ length: 24 }, (_, i) => i)}
-                    keyExtractor={(item) => `h-${item}`}
-                    renderItem={({ item }) => (
-                      <View style={[styles.wheelItem, tempHour === item && styles.wheelItemActive]}>
-                        <Text style={[styles.wheelItemText, tempHour === item && styles.wheelItemTextActive]}>
-                          {item}
-                        </Text>
-                      </View>
-                    )}
-                    showsVerticalScrollIndicator={false}
-                    snapToInterval={40}
-                    decelerationRate="fast"
-                    scrollEventThrottle={16}
-                    getItemLayout={(_, index) => ({ length: 40, offset: 40 * index, index })}
-                    initialScrollIndex={tempHour}
-                    onMomentumScrollEnd={(e) => {
-                      const index = Math.round(e.nativeEvent.contentOffset.y / 40);
-                      if (index >= 0 && index < 24) setTempHour(index);
-                    }}
-                    ListHeaderComponent={<View style={{ height: 80 }} />}
-                    ListFooterComponent={<View style={{ height: 80 }} />}
-                  />
+  data={Array.from({ length: 25 }, (_, i) => i)}
+  keyExtractor={(item) => `h-${item}`}
+  renderItem={({ item }) => (
+    <View
+      style={[
+        styles.wheelItem,
+        tempHour === item && styles.wheelItemActive
+      ]}
+    >
+      <Text
+        style={[
+          styles.wheelItemText,
+          tempHour === item && styles.wheelItemTextActive
+        ]}
+      >
+        {item}
+      </Text>
+    </View>
+  )}
+  showsVerticalScrollIndicator={false}
+  snapToInterval={40}
+  decelerationRate="fast"
+  scrollEventThrottle={16}
+  getItemLayout={(_, index) => ({
+    length: 40,
+    offset: 40 * index,
+    index
+  })}
+  initialScrollIndex={tempHour}
+  onMomentumScrollEnd={(e) => {
+    const index = Math.round(
+      e.nativeEvent.contentOffset.y / 40
+    );
+
+    if (index >= 0 && index < 25) {
+      setTempHour(index);
+    }
+  }}
+  ListHeaderComponent={<View style={{ height: 80 }} />}
+  ListFooterComponent={<View style={{ height: 80 }} />}
+/>
                 </View>
               </View>
 
@@ -280,7 +299,7 @@ const UsageTrackerComponent = ({ category, data }) => {
                 <View style={styles.wheelWrapper}>
                   <View style={styles.selectionIndicator} />
                   <FlatList
-                    data={Array.from({ length: 60 }, (_, i) => i)}
+                    data={Array.from({ length: 12 }, (_, i) => i * 5)}
                     keyExtractor={(item) => `m-${item}`}
                     renderItem={({ item }) => (
                       <View style={[styles.wheelItem, tempMinute === item && styles.wheelItemActive]}>
@@ -294,10 +313,10 @@ const UsageTrackerComponent = ({ category, data }) => {
                     decelerationRate="fast"
                     scrollEventThrottle={16}
                     getItemLayout={(_, index) => ({ length: 40, offset: 40 * index, index })}
-                    initialScrollIndex={tempMinute}
+                    initialScrollIndex={Math.round(tempMinute / 5)}
                     onMomentumScrollEnd={(e) => {
                       const index = Math.round(e.nativeEvent.contentOffset.y / 40);
-                      if (index >= 0 && index < 60) setTempMinute(index);
+                      if (index >= 0 && index < 12) setTempMinute(index * 5);
                     }}
                     ListHeaderComponent={<View style={{ height: 80 }} />}
                     ListFooterComponent={<View style={{ height: 80 }} />}
@@ -305,7 +324,7 @@ const UsageTrackerComponent = ({ category, data }) => {
                 </View>
               </View>
             </View>
-          </View>
+            </View>
         </View>
       )}
     </SafeAreaView>

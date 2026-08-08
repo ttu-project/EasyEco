@@ -1,4 +1,8 @@
-import { StyleSheet, Text, View, TouchableOpacity, Image, ScrollView, Alert, SafeAreaView } from 'react-native';
+import { useState } from 'react';
+import {
+  StyleSheet, Text, View, TouchableOpacity, Image, ScrollView,
+  Alert, SafeAreaView, FlatList
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import Svg, { Path } from 'react-native-svg';
@@ -25,6 +29,9 @@ const CATEGORY_ICON_MAP = {
   rice: 'rice', pot: 'pot', kettle: 'kettle', vacuum: 'vacuum',
 };
 
+const HOUR_DATA = Array.from({ length: 25 }, (_, i) => i);
+const MINUTE_DATA = Array.from({ length: 12 }, (_, i) => i * 5);
+
 const BackIcon = () => (
   <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
     <Path d="M15 18L9 12L15 6" stroke="#1F2937" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -46,25 +53,50 @@ const TrashIcon = () => (
 
 export default function MyDevices() {
   const router = useRouter();
-  const { getAllDevices, deleteDevice } = useUsage();
+  const { getAllDevices, deleteDevice, updateDevice } = useUsage();
   const rawDevices = getAllDevices();
+
+  const [showPicker, setShowPicker] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [tempHour, setTempHour] = useState(8);
+  const [tempMinute, setTempMinute] = useState(0);
+
+  const parseTimeString = (timeStr) => {
+    if (!timeStr) return { hours: 8, minutes: 0 };
+    const match = timeStr.match(/(\d+)\s*hr\s*(\d+)\s*mins?/i);
+    if (match) {
+      return {
+        hours: parseInt(match[1], 10),
+        minutes: parseInt(match[2], 10),
+      };
+    }
+    return { hours: 8, minutes: 0 };
+  };
 
   const devices = rawDevices.map((d) => ({
     ...d,
     iconType: CATEGORY_ICON_MAP[d.categoryId] || 'bulb',
   }));
 
-  const handleEdit = (item) => {
-    router.push({
-      pathname: '../Devices/EditDevice',
-      params: {
-        deviceId: item.id,
-        categoryId: item.categoryId,
-        title: item.name,
-        iconType: item.iconType,
-        mode: 'edit',
-      },
-    });
+  const handleEditPress = (item) => {
+    const { hours, minutes } = parseTimeString(item.time);
+    setSelectedItem(item);
+    setTempHour(hours);
+    setTempMinute(minutes);
+    setShowPicker(true);
+  };
+
+  const handleConfirmTime = () => {
+    if (selectedItem && updateDevice) {
+      const formattedTime = `${tempHour}hr${tempMinute} mins`;
+      updateDevice(selectedItem.id, {
+        ...selectedItem,
+        time: formattedTime,
+        durationHours: tempHour + (tempMinute / 60),
+      });
+    }
+    setShowPicker(false);
+    setSelectedItem(null);
   };
 
   const handleDelete = (item) => {
@@ -114,7 +146,7 @@ export default function MyDevices() {
               </View>
             </View>
             <View style={styles.cardActions}>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => handleEdit(item)} hitSlop={8}>
+              <TouchableOpacity style={styles.actionBtn} onPress={() => handleEditPress(item)} hitSlop={8}>
                 <EditIcon />
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(item)} hitSlop={8}>
@@ -124,6 +156,89 @@ export default function MyDevices() {
           </View>
         ))}
       </ScrollView>
+
+      {showPicker && (
+        <View style={styles.pickerOverlay}>
+          <TouchableOpacity
+            style={styles.pickerBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowPicker(false)}
+          />
+          <View style={styles.pickerContainer}>
+            <View style={styles.pickerHeader}>
+              <TouchableOpacity onPress={() => setShowPicker(false)}>
+                <Text style={styles.pickerCancelBtn}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.pickerTitle}>Select Time</Text>
+              <TouchableOpacity onPress={handleConfirmTime}>
+                <Text style={styles.pickerDoneBtn}>Done</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.wheelsContainer}>
+              <View style={styles.wheelColumn}>
+                <Text style={styles.wheelLabel}>Hour</Text>
+                <View style={styles.wheelWrapper}>
+                  <View style={styles.selectionIndicator} />
+                  <FlatList
+                    data={HOUR_DATA}
+                    keyExtractor={(item) => `h-${item}`}
+                    renderItem={({ item }) => (
+                      <View style={[styles.wheelItem, tempHour === item && styles.wheelItemActive]}>
+                        <Text style={[styles.wheelItemText, tempHour === item && styles.wheelItemTextActive]}>
+                          {item}
+                        </Text>
+                      </View>
+                    )}
+                    showsVerticalScrollIndicator={false}
+                    snapToInterval={40}
+                    decelerationRate="fast"
+                    scrollEventThrottle={16}
+                    getItemLayout={(_, index) => ({ length: 40, offset: 40 * index, index })}
+                    initialScrollIndex={tempHour}
+                    onMomentumScrollEnd={(e) => {
+                      const index = Math.round(e.nativeEvent.contentOffset.y / 40);
+                      if (index >= 0 && index < HOUR_DATA.length) setTempHour(HOUR_DATA[index]);
+                    }}
+                    ListHeaderComponent={<View style={{ height: 80 }} />}
+                    ListFooterComponent={<View style={{ height: 80 }} />}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.wheelColumn}>
+                <Text style={styles.wheelLabel}>Minute</Text>
+                <View style={styles.wheelWrapper}>
+                  <View style={styles.selectionIndicator} />
+                  <FlatList
+                    data={MINUTE_DATA}
+                    keyExtractor={(item) => `m-${item}`}
+                    renderItem={({ item }) => (
+                      <View style={[styles.wheelItem, tempMinute === item && styles.wheelItemActive]}>
+                        <Text style={[styles.wheelItemText, tempMinute === item && styles.wheelItemTextActive]}>
+                          {item.toString().padStart(2, '0')}
+                        </Text>
+                      </View>
+                    )}
+                    showsVerticalScrollIndicator={false}
+                    snapToInterval={40}
+                    decelerationRate="fast"
+                    scrollEventThrottle={16}
+                    getItemLayout={(_, index) => ({ length: 40, offset: 40 * index, index })}
+                    initialScrollIndex={Math.min(Math.max(MINUTE_DATA.indexOf(tempMinute), 0), MINUTE_DATA.length - 1)}
+                    onMomentumScrollEnd={(e) => {
+                      const index = Math.round(e.nativeEvent.contentOffset.y / 40);
+                      if (index >= 0 && index < MINUTE_DATA.length) setTempMinute(MINUTE_DATA[index]);
+                    }}
+                    ListHeaderComponent={<View style={{ height: 80 }} />}
+                    ListFooterComponent={<View style={{ height: 80 }} />}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -156,4 +271,57 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: 13, color: '#6B7280' },
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   actionBtn: { padding: 4 },
+
+  pickerOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 100,
+    justifyContent: 'flex-end',
+  },
+  pickerBackdrop: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  pickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  pickerCancelBtn: { fontSize: 16, color: '#6B7280' },
+  pickerTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
+  pickerDoneBtn: { fontSize: 16, fontWeight: '600', color: '#3B82F6' },
+  wheelsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    height: 280,
+  },
+  wheelColumn: { alignItems: 'center', marginHorizontal: 24 },
+  wheelLabel: {
+    fontSize: 13, fontWeight: '600', color: '#6B7280',
+    marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  wheelWrapper: { height: 200, width: 80, overflow: 'hidden' },
+  selectionIndicator: {
+    position: 'absolute',
+    top: 80, left: 0, right: 0,
+    height: 40,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    zIndex: -1,
+  },
+  wheelItem: { height: 40, justifyContent: 'center', alignItems: 'center' },
+  wheelItemText: { fontSize: 18, color: '#9CA3AF' },
+  wheelItemTextActive: { color: '#111827', fontWeight: '700' },
 });
