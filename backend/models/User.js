@@ -38,13 +38,13 @@ const userSchema = new mongoose.Schema(
     }
 );
 
-// Social-auth users do not have a phone number. A partial unique index keeps
-// phone numbers unique without treating every missing value as the same `null`.
+// Phone numbers are unique when present. A sparse unique index keeps
+// phone numbers unique without treating missing values as duplicate nulls.
 userSchema.index(
   { phoneNumber: 1 },
   {
     unique: true,
-    partialFilterExpression: { phoneNumber: { $type: 'string' } },
+    sparse: true,
   }
 );
 

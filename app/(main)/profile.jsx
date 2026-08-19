@@ -58,11 +58,29 @@ export default function Profile() {
     const loadProfile = async () => {
       try {
         const user = await getUser();
-        setUserName(user?.name || '');
-        setEditNumber(user?.phoneNumber || '');
-        setEditGmail(user?.email || '');
-        setProfileImage(user?.profileImage || null);
-        setEditProfileImage(user?.profileImage || null);
+        if (user) {
+          setUserName(user?.name || '');
+          setEditNumber(user?.phoneNumber || '');
+          setEditGmail(user?.email || '');
+          setProfileImage(user?.profileImage || null);
+          setEditProfileImage(user?.profileImage || null);
+        }
+        if (user?.token) {
+          try {
+            const response = await axios.get(`${API_BASE_URL}/users/profile`, {
+              headers: { Authorization: `Bearer ${user.token}` },
+            });
+            const serverUser = { ...user, ...response.data };
+            await saveSession(serverUser);
+            setUserName(serverUser.name || '');
+            setEditNumber(serverUser.phoneNumber || '');
+            setEditGmail(serverUser.email || '');
+            setProfileImage(serverUser.profileImage || null);
+            setEditProfileImage(serverUser.profileImage || null);
+          } catch (fetchErr) {
+            // Non-fatal, offline fallback
+          }
+        }
       } catch (error) {
         console.warn('Unable to load profile:', error);
       }
@@ -88,77 +106,6 @@ export default function Profile() {
     }
   };
 
-//help center
-  const HelpCenterContent = () => (
-    <ScrollView contentContainerStyle={styles.helpScrollContent} showsVerticalScrollIndicator={true}>
-      <View style={styles.helpCard}>
-        <Text style={styles.helpSectionTitle}>How to Track Energy Usage</Text>
-        <Text style={styles.helpSubTitle}>How to add your daily energy usage?</Text>
-        <Text style={styles.helpBullet}>{'\u2022'} Select your device from the list.</Text>
-        <Image source={require('../../assets/track-duration-wattage.jpg')} style={styles.helpImage} resizeMode="contain" />
-        <Text style={styles.helpBullet}>{'\u2022'} Choose the wattage (appliance type/ model).</Text>
-        <Text style={styles.helpBullet}>{'\u2022'} Enter the duration (usage hours).</Text>
-        <Text style={styles.helpBullet}>{'\u2022'} Tap the "+" button to log it.</Text>
-        <Image source={require('../../assets/addusagedetail.jpg')} style={styles.helpImage} resizeMode="contain" />
-        <Text style={styles.helpBullet}>{'\u2022'} Press the "Calculate Bill" button to save your total usage and instantly calculate your daily cost.</Text>
-        <View style={styles.calculateButtonContainer}>
-          <View style={styles.calculateButton}>
-            <Text style={styles.calculateButtonText}>Calculate Bill</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.helpCard}>
-        <Text style={styles.helpSubTitle}>How to find your appliance wattage?</Text>
-        <Text style={styles.helpBullet}><Text style={styles.helpBold}>{'\u2022'} Check the Product Label:</Text> Look for a silver or white sticker/plate on the back or bottom of your appliance.</Text>
-        <Text style={styles.helpBullet}><Text style={styles.helpBold}>{'\u2022'} Locate the "W" or "Watt" Value:</Text> Look for a number followed by a W (e.g., 1000W or 60W).</Text>
-        <Text style={styles.helpBullet}><Text style={styles.helpBold}>{'\u2022'} Check the User Manual or Box:</Text> If the label is scratched off, you can find the power specification in the manual or on the original packaging.</Text>
-      </View>
-
-      <View style={styles.helpCard}>
-        <Text style={styles.helpSubTitle}>Understanding your dashboard graphs</Text>
-        <Text style={styles.helpParagraph}>EasyEco turns your scanned monthly bills into simple, easy-to-read visual charts. Here is how to understand the data on your dashboard:</Text>
-        <Text style={styles.helpBullet}><Text style={styles.helpBold}>• How its updates:</Text> Every time you scan a new electricity bill, the AI automatically extracts your total units (kWh) and adds a new bar for that month.</Text>
-        <Text style={styles.helpBullet}><Text style={styles.helpBold}>• How to read it:</Text>{'\n'}Higher bars: Mean you used more electricity that month.{'\n'}Lower bars: Mean your energy-saving efforts worked!</Text>
-      </View>
-
-      <View style={styles.helpCard}>
-        <Text style={styles.helpSubTitle}>Using the AI Smart Bill Analyst</Text>
-        <Text style={styles.helpSubSubTitle}>How to Scan Your Electricity Bill</Text>
-        <Text style={styles.helpNumbered}>1. Open the AI Assistant.</Text>
-        <Text style={styles.helpNumbered}>2. Tap the Upload Image button.</Text>
-        <Text style={styles.helpNumbered}>3. Take or select a clear photo of your electricity bill.</Text>
-        <Text style={styles.helpNumbered}>4. Wait for AI to analyze your bill.</Text>
-        <Text style={styles.helpNumbered}>5. View your usage details and energy-saving suggestions.</Text>
-        <Text style={styles.helpSubSubTitle}>Photo Tips for Best AI Analysis</Text>
-        <Text style={styles.helpBullet}>• Take a clear and well-lit photo.</Text>
-        <Text style={styles.helpBullet}>• Make sure all text on the bill is visible.</Text>
-        <Text style={styles.helpBullet}>• Keep the bill flat and avoid shadows.</Text>
-        <Text style={styles.helpBullet}>• Capture the entire bill in the frame.</Text>
-        <Text style={styles.helpBullet}>• Avoid blurry or tilted images.</Text>
-        <Text style={styles.helpSubSubTitle}>What Data Does the AI Extract?</Text>
-        <Text style={styles.helpBullet}>• Meter reading</Text>
-        <Text style={styles.helpBullet}>• Previous and current usage</Text>
-        <Text style={styles.helpBullet}>• Electricity units (kWh)</Text>
-        <Text style={styles.helpBullet}>• Billing amount</Text>
-        <Text style={styles.helpBullet}>• Billing period</Text>
-        <Text style={styles.helpBullet}>• Usage trends</Text>
-        <Text style={styles.helpBullet}>• Energy-saving recommendations</Text>
-      </View>
-
-      <View style={styles.helpCard}>
-        <Text style={styles.helpSubTitle}>Contact us</Text>
-        <Text style={styles.helpParagraph}>Need help? We're here to assist you.</Text>
-        <View style={styles.helpEmailRow}>
-          <Text style={styles.helpParagraph}>Email: </Text>
-          <TouchableOpacity onPress={openSupportEmail} activeOpacity={0.7}>
-            <Text style={[styles.helpParagraph, styles.helpEmail]}>easyeco637@gmail.com</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </ScrollView>
-  );
-
   const handleEditProfile = () => {
     setEditName(userName);
     setEditProfileImage(profileImage);
@@ -166,14 +113,6 @@ export default function Profile() {
   };
 
   const saveProfile = async () => {
-    const name = editName.trim();
-    const phoneNumber = editNumber.trim();
-
-    if (!name || !phoneNumber) {
-      Alert.alert('Missing information', 'Please enter your name and phone number.');
-      return;
-    }
-
     try {
       setIsSavingProfile(true);
       const user = await getUser();
@@ -184,25 +123,21 @@ export default function Profile() {
       const imageDataUrl = hasNewLocalProfileImage
         ? await imageUriToDataUrl(editProfileImage)
         : undefined;
-      const response = await axios.put(
-        `${API_BASE_URL}/users/profile`,
-        {
-          name,
-          phoneNumber,
-          email: editGmail.trim(),
-          ...(imageDataUrl ? { profileImage: imageDataUrl } : {}),
-        },
-        { headers: { Authorization: `Bearer ${user?.token}` } }
-      );
-      const updatedUser = { ...user, ...response.data };
 
-      await saveSession(updatedUser);
-      setUserName(updatedUser.name);
-      setEditNumber(updatedUser.phoneNumber || '');
-      setEditGmail(updatedUser.email || '');
-      setProfileImage(updatedUser.profileImage || null);
-      setEditProfileImage(updatedUser.profileImage || null);
+      if (imageDataUrl && user?.token) {
+        const response = await axios.put(
+          `${API_BASE_URL}/users/profile/photo`,
+          { profileImage: imageDataUrl },
+          { headers: { Authorization: `Bearer ${user?.token}` } }
+        );
+        const updatedUser = { ...user, ...response.data };
+        await saveSession(updatedUser);
+        setProfileImage(updatedUser.profileImage || null);
+        setEditProfileImage(updatedUser.profileImage || null);
+      }
+
       setEditModalVisible(false);
+      Alert.alert('Success', 'Profile photo updated successfully.');
     } catch (error) {
       if (error.response?.status === 401) {
         await clearSession();
@@ -215,7 +150,7 @@ export default function Profile() {
         return;
       }
 
-      Alert.alert('Unable to save profile', error.response?.data?.message || 'Please try again.');
+      Alert.alert('Unable to save photo', error.response?.data?.message || 'Please try again.');
     } finally {
       setIsSavingProfile(false);
     }
@@ -320,6 +255,62 @@ export default function Profile() {
     });
   };
 
+  const HelpCenterContent = () => (
+    <ScrollView contentContainerStyle={styles.helpScrollContent} showsVerticalScrollIndicator={true}>
+      <View style={styles.helpCard}>
+        <Text style={styles.helpSectionTitle}>How to Track Energy Usage</Text>
+        <Text style={styles.helpSubTitle}>How to add your daily energy usage?</Text>
+        <Text style={styles.helpBullet}>{'\u2022'} Select your device from the list.</Text>
+        <Image source={require('../../assets/track-duration-wattage.jpg')} style={styles.helpImage} resizeMode="contain" />
+        <Text style={styles.helpBullet}>{'\u2022'} Choose the wattage (appliance type/ model).</Text>
+        <Text style={styles.helpBullet}>{'\u2022'} Enter the duration (usage hours).</Text>
+        <Text style={styles.helpBullet}>{'\u2022'} Tap the "+" button to log it.</Text>
+        <Image source={require('../../assets/addusagedetail.jpg')} style={styles.helpImage} resizeMode="contain" />
+        <Text style={styles.helpBullet}>{'\u2022'} Press the "Calculate Bill" button to save your total usage and instantly calculate your daily cost.</Text>
+        <View style={styles.calculateButtonContainer}>
+          <View style={styles.calculateButton}>
+            <Text style={styles.calculateButtonText}>Calculate Bill</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.helpCard}>
+        <Text style={styles.helpSubTitle}>How to find your appliance wattage?</Text>
+        <Text style={styles.helpBullet}><Text style={styles.helpBold}>{'\u2022'} Check the Product Label:</Text> Look for a silver or white sticker/plate on the back or bottom of your appliance.</Text>
+        <Text style={styles.helpBullet}><Text style={styles.helpBold}>{'\u2022'} Locate the "W" or "Watt" Value:</Text> Look for a number followed by a W (e.g., 1000W or 60W).</Text>
+        <Text style={styles.helpBullet}><Text style={styles.helpBold}>{'\u2022'} Check the User Manual or Box:</Text> If the label is scratched off, you can find the power specification in the manual or on the original packaging.</Text>
+      </View>
+
+      <View style={styles.helpCard}>
+        <Text style={styles.helpSubTitle}>Understanding your dashboard graphs</Text>
+        <Text style={styles.helpParagraph}>EasyEco turns your scanned monthly bills into simple, easy-to-read visual charts. Here is how to understand the data on your dashboard:</Text>
+        <Text style={styles.helpBullet}><Text style={styles.helpBold}>• How its updates:</Text> Every time you scan a new electricity bill, the AI automatically extracts your total units (kWh) and adds a new bar for that month.</Text>
+        <Text style={styles.helpBullet}><Text style={styles.helpBold}>• How to read it:</Text>{'\n'}Higher bars: Mean you used more electricity that month.{'\n'}Lower bars: Mean your energy-saving efforts worked!</Text>
+      </View>
+
+      <View style={styles.helpCard}>
+        <Text style={styles.helpSubTitle}>Using the AI Smart Bill Analyst</Text>
+        <Text style={styles.helpSubSubTitle}>How to Scan Your Electricity Bill</Text>
+        <Text style={styles.helpNumbered}>1. Open the AI Assistant.</Text>
+        <Text style={styles.helpNumbered}>2. Tap the Upload Image button.</Text>
+        <Text style={styles.helpNumbered}>3. Take or select a clear photo of your electricity bill.</Text>
+        <Text style={styles.helpNumbered}>4. Wait for AI to analyze your bill.</Text>
+        <Text style={styles.helpNumbered}>5. View your usage details and energy-saving suggestions.</Text>
+      </View>
+
+      <View style={styles.helpCard}>
+        <Text style={styles.helpSubTitle}>Contact us</Text>
+        <Text style={styles.helpParagraph}>Need help? We're here to assist you.</Text>
+        <View style={styles.helpEmailRow}>
+          <Text style={styles.helpParagraph}>Email: </Text>
+          <TouchableOpacity onPress={openSupportEmail} activeOpacity={0.7}>
+            <Text style={[styles.helpParagraph, styles.helpEmail]}>easyeco637@gmail.com</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
+  );
+
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -333,7 +324,25 @@ export default function Profile() {
       quality: 0.7,
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setProfileImage(result.assets[0].uri);
+      const selectedUri = result.assets[0].uri;
+      setProfileImage(selectedUri);
+      setEditProfileImage(selectedUri);
+      try {
+        const user = await getUser();
+        const imageDataUrl = await imageUriToDataUrl(selectedUri);
+        if (imageDataUrl && user?.token) {
+          const response = await axios.put(
+            `${API_BASE_URL}/users/profile/photo`,
+            { profileImage: imageDataUrl },
+            { headers: { Authorization: `Bearer ${user.token}` } }
+          );
+          const updatedUser = { ...user, ...response.data };
+          await saveSession(updatedUser);
+          setProfileImage(updatedUser.profileImage || selectedUri);
+        }
+      } catch (err) {
+        console.warn('Direct photo upload:', err.message);
+      }
     }
   };
 
@@ -493,8 +502,11 @@ export default function Profile() {
               <View style={styles.infoRow}>
                 <Ionicons name="call-outline" size={20} color="#1A1A1A" style={styles.infoIcon} />
                 <View style={styles.infoTextWrapper}>
-                  <Text style={styles.infoLabel}>{t('number')}</Text>
-                  <TextInput style={styles.infoInput} value={editNumber} onChangeText={setEditNumber} placeholder={t('enterPhone')} placeholderTextColor="#999" keyboardType="phone-pad" />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.infoLabel}>{t('number')}</Text>
+                    <Text style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>Read-only</Text>
+                  </View>
+                  <TextInput style={[styles.infoInput, { color: '#6B7280', backgroundColor: '#F9FAFB' }]} value={editNumber} editable={false} placeholder={t('enterPhone')} placeholderTextColor="#999" keyboardType="phone-pad" />
                 </View>
               </View>
             </View>
@@ -502,8 +514,11 @@ export default function Profile() {
               <View style={styles.infoRow}>
                 <Ionicons name="mail-outline" size={20} color="#1A1A1A" style={styles.infoIcon} />
                 <View style={styles.infoTextWrapper}>
-                  <Text style={styles.infoLabel}>{t('gmail')}</Text>
-                  <TextInput style={styles.infoInput} value={editGmail} onChangeText={setEditGmail} placeholder={t('enterEmail')} placeholderTextColor="#999" keyboardType="email-address" autoCapitalize="none" />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.infoLabel}>{t('gmail')}</Text>
+                    <Text style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>Read-only</Text>
+                  </View>
+                  <TextInput style={[styles.infoInput, { color: '#6B7280', backgroundColor: '#F9FAFB' }]} value={editGmail} editable={false} placeholder={t('enterEmail')} placeholderTextColor="#999" keyboardType="email-address" autoCapitalize="none" />
                 </View>
               </View>
             </View>

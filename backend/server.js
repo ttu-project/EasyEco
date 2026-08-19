@@ -18,6 +18,7 @@ app.get('/', (req, res) => {
   res.send('API Running');
 });
 
+app.use('/api/auth', require('./routes/userRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 
 const productRoutes = require('./routes/productRoutes');
@@ -25,6 +26,16 @@ app.use('/api/products', productRoutes);
 
 const usageRoutes = require('./routes/usageRoutes');
 app.use('/api/usage', usageRoutes);
+
+// Usage Records — immutable snapshots for monthly estimation
+const recordRoutes = require('./routes/recordRoutes');
+app.use('/api/records', recordRoutes);
+
+const billRoutes = require('./routes/billRoutes');
+app.use('/api/bill', billRoutes);
+
+const dashboardRoutes = require('./routes/dashboardRoutes');
+app.use('/api/dashboard', dashboardRoutes);
 
 const apiRoutes = require('./routes/apiRoutes');
 app.use('/api', apiRoutes);

@@ -5,6 +5,8 @@ const {
   registerUser,
   loginUser,
   requestPasswordReset,
+  getUserProfile,
+  updateProfilePhoto,
   updateProfile,
   changePassword,
   requestPasswordResetOtp,
@@ -19,6 +21,8 @@ router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/request-password-reset', requestPasswordReset);
 router.post('/request-password-reset-otp', requestPasswordResetOtp);
+router.get('/profile', requireAuth, getUserProfile);
+router.put('/profile/photo', requireAuth, updateProfilePhoto);
 router.put('/profile', requireAuth, updateProfile);
 router.put('/change-password', requireAuth, changePassword);
 router.post('/verify-reset-otp', verifyResetOtp);

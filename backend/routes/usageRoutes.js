@@ -2,8 +2,11 @@ const express = require('express');
 const router = express.Router();
 const Usage = require('../models/Usage');
 const getUsageUserKey = require('../middleware/usageAuth');
+const { calculateBill } = require('../controllers/billController');
 
 router.use(getUsageUserKey);
+
+router.get('/estimated-total', calculateBill);
 
 router.get('/', async (req, res) => {
   try {
@@ -42,7 +45,28 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const { category, name, watt, time } = req.body;
+
+    const usage = await Usage.findOneAndUpdate(
+      { _id: req.params.id, user: req.usageUserKey },
+      { ...(category && { category }), ...(name && { name }), ...(watt && { watt }), ...(time && { time }) },
+      { new: true, runValidators: true }
+    );
+
+    if (!usage) {
+      return res.status(404).json({ message: 'Usage not found' });
+    }
+
+    res.json(usage);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
+
   try {
     const usage = await Usage.findOneAndDelete({
       _id: req.params.id,

@@ -3,7 +3,8 @@ import {
   View, 
   TouchableOpacity, 
   StyleSheet, 
-  Dimensions, 
+  Dimensions,
+  useWindowDimensions, 
   Platform 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,9 +37,9 @@ const TabBgSvg = ({ width, height, colors }) => {
 
   return (
     <Svg 
-      width={BAR_WIDTH} 
+      width={width} 
       height={height} 
-      viewBox={`0 0 ${BAR_WIDTH} ${height}`}
+      viewBox={`0 0 ${width} ${height}`}
       style={{ position: 'absolute', top: 0, left: 0 }}
     >
       <Path d={d} fill={colors.card} />
@@ -54,7 +55,9 @@ export const UserIcon = ({ color, size }) => <User width={size} height={size} st
 
 
 export function TabBar({ state, descriptors, navigation }) {
+  const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const barWidth = screenWidth - (FLOATING_PADDING * 2);
   
   const currentRoute = state?.routes?.[state?.index]?.name;
   if (currentRoute === 'robot') {
@@ -77,7 +80,7 @@ export function TabBar({ state, descriptors, navigation }) {
   ];
   
   const activeIndex = state?.index ?? 0;
-  const barHeight = Platform.OS === 'ios' ? 62 : 54;  // medium bar
+  const barHeight = 54;
   const robotIndex = routes.findIndex(r => r.name.toLowerCase() === 'robot');
 
   const bottomOffset = insets.bottom > 0 
@@ -87,7 +90,7 @@ export function TabBar({ state, descriptors, navigation }) {
   return (
     <View style={[styles.outerContainer, { bottom: bottomOffset }]}>
       <View style={[styles.innerBarContainer, { height: barHeight }]}>
-        <TabBgSvg width={BAR_WIDTH} height={barHeight} colors={colors} />
+        <TabBgSvg width={barWidth} height={barHeight} colors={colors} />
         <View style={[styles.itemsContainer, { height: barHeight }]}>
           {routes.map((route, index) => {
             if (index === robotIndex) return <View key="spacer" style={styles.spacerItem} />;
@@ -115,7 +118,7 @@ export function TabBar({ state, descriptors, navigation }) {
         </View>
       </View>
       
-      <View style={[styles.centerButtonContainer, { left: BAR_WIDTH / 2 - 31 }]}>
+      <View style={[styles.centerButtonContainer, { left: barWidth / 2 - 31 }]}>
         <TouchableOpacity 
           style={[styles.centerButton, { backgroundColor: colors.accent }]} 
           onPress={() => navigation?.navigate('robot')}
@@ -168,7 +171,6 @@ const styles = StyleSheet.create({
     height: 62,
     zIndex: 10, 
     justifyContent: 'center', 
-    left: (BAR_WIDTH / 2) - 31,
     alignItems: 'center'
   },
   centerButton: { 

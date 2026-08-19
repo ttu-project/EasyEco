@@ -4,9 +4,11 @@ import {
   View,
   ScrollView,
   SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import React, { useMemo } from 'react';
 import Svg, { Circle, G } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUsage } from '../Usage/UsageContext';
 import { getForecast, summarizeUsageBill } from '../utils/billing';
 
@@ -18,6 +20,9 @@ const PLOT_HEIGHT = CHART_HEIGHT - LABEL_HEIGHT;
 const Y_TICKS = [100, 80, 60, 40, 20, 0];
 
 export default function Dashboard() {
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, StatusBar.currentHeight || 0);
+  const paddingTop = topInset > 0 ? topInset + 8 : 16;
   const {
     getUsage,
     dailyRecords,
@@ -112,7 +117,7 @@ export default function Dashboard() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingTop }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ═══════════════════════════════
@@ -368,7 +373,7 @@ const styles = StyleSheet.create({
 
   scroll: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
 
   center: {

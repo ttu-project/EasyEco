@@ -151,7 +151,7 @@ export default function LoginScreen() {
       if (!phoneNumber.trim()) {
         return Alert.alert(
           'Error',
-          'Please enter phone number'
+          'Please enter your Gmail or phone number'
         );
       }
 
@@ -167,7 +167,9 @@ export default function LoginScreen() {
       const response = await axios.post(
         `${API_BASE_URL}/users/login`,
         {
-          phoneNumber,
+          identifier: phoneNumber.trim(),
+          email: phoneNumber.trim(),
+          phoneNumber: phoneNumber.trim(),
           password,
         }
       );
@@ -323,13 +325,13 @@ export default function LoginScreen() {
 
             <View style={styles.form}>
               <CustomInput
-                label="Phone number"
-                placeholder="Enter phone"
+                label="Gmail / Phone"
+                placeholder="Enter Gmail or phone number"
                 value={phoneNumber}
                 onChangeText={
                   setPhoneNumber
                 }
-                keyboardType="phone-pad"
+                autoCapitalize="none"
               />
 
               <CustomInput

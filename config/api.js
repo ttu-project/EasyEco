@@ -3,34 +3,21 @@ import { Platform } from 'react-native';
 
 const API_PORT = '5000';
 const API_PATH = '/api';
-const LOCAL_NETWORK_HOST = '192.168.100.241';
 
-const getExpoHost = () => {
-  const hostUri =
-    Constants.expoConfig?.hostUri ||
-    Constants.manifest2?.extra?.expoClient?.hostUri ||
-    Constants.manifest?.debuggerHost;
+const CLOUD_SERVER_HOST = '118.27.151.8';
 
-  return hostUri?.split(':')[0];
-};
-
+// Decide which backend host to use
 const getDefaultHost = () => {
-  if (Platform.OS === 'android' && !Constants.expoConfig?.hostUri) {
-    return '10.0.2.2';
-  }
-
-  if (Platform.OS === 'ios' && !Constants.expoConfig?.hostUri) {
-    return 'localhost';
-  }
-
-  return LOCAL_NETWORK_HOST;
+  return CLOUD_SERVER_HOST;
 };
 
+// Allow environment variable to override the default host
 const API_HOST =
-  process.env.EXPO_PUBLIC_API_HOST ||
-  getExpoHost() ||
-  getDefaultHost();
+  process.env.EXPO_PUBLIC_API_HOST || getDefaultHost();
 
+// Complete API URL
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   `http://${API_HOST}:${API_PORT}${API_PATH}`;
+
+console.log('API_BASE_URL:', API_BASE_URL);

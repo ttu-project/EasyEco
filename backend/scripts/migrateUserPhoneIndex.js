@@ -5,7 +5,11 @@ const User = require('../models/User');
 dotenv.config();
 
 async function migrateUserPhoneIndex() {
-  await mongoose.connect(process.env.MONGO_URI);
+  let uri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/easyeco';
+  if (uri.includes('<db_password>') || uri.includes('<password>')) {
+    uri = 'mongodb://127.0.0.1:27017/easyeco';
+  }
+  await mongoose.connect(uri);
 
   const indexes = await User.collection.indexes();
   const existingPhoneIndex = indexes.find((index) => index.name === 'phoneNumber_1');
@@ -19,7 +23,7 @@ async function migrateUserPhoneIndex() {
     {
       name: 'phoneNumber_1',
       unique: true,
-      partialFilterExpression: { phoneNumber: { $type: 'string' } },
+      sparse: true,
     }
   );
 

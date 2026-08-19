@@ -147,15 +147,17 @@ const registerUser = async (req, res) => {
   try {
     const { name, phoneNumber, email, password } = req.body;
 
-    const userExists = await User.findOne({ phoneNumber });
-
-    if (userExists) {
-      return res.status(400).json({
-        message: 'User already exists',
-      });
+    if (!name || !password) {
+      return res.status(400).json({ message: 'Name and password are required' });
     }
 
     const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedPhone = phoneNumber ? normaliseMyanmarPhone(phoneNumber) : null;
+
+    if (!normalizedEmail && !normalizedPhone) {
+      return res.status(400).json({ message: 'Please provide either an email or a phone number' });
+    }
+
     if (normalizedEmail) {
       const emailExists = await User.findOne({ email: normalizedEmail });
       if (emailExists) {
@@ -163,13 +165,21 @@ const registerUser = async (req, res) => {
       }
     }
 
-    const salt = await bcrypt.genSalt(10);
+    if (normalizedPhone) {
+      const phoneExists = await User.findOne({
+        phoneNumber: { $in: phoneNumberVariants(normalizedPhone) },
+      });
+      if (phoneExists) {
+        return res.status(400).json({ message: 'That phone number is already in use.' });
+      }
+    }
 
+    const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      name,
-      phoneNumber,
+      name: name.trim(),
+      ...(normalizedPhone && { phoneNumber: normalizedPhone }),
       ...(normalizedEmail && { email: normalizedEmail }),
       password: hashedPassword,
     });
@@ -177,24 +187,23 @@ const registerUser = async (req, res) => {
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET,
-      {
-        expiresIn: '30d',
-      }
+      { expiresIn: '30d' }
     );
 
     res.status(201).json({
       _id: user._id,
       name: user.name,
-      phoneNumber: user.phoneNumber,
-      email: user.email,
-      profileImage: user.profileImage,
+      phoneNumber: user.phoneNumber || '',
+      email: user.email || '',
+      profileImage: user.profileImage || null,
       token,
     });
 
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    if (error?.code === 11000) {
+      return res.status(400).json({ message: 'Account with these credentials already exists' });
+    }
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -231,20 +240,39 @@ const requestPasswordReset = async (req, res) => {
 // Login
 const loginUser = async (req, res) => {
   try {
-    const { phoneNumber, password } = req.body;
+    const { phoneNumber, email, identifier, password } = req.body;
+    const loginId = (email || phoneNumber || identifier || req.body.username || '').trim();
 
-    const user = await User.findOne({ phoneNumber });
+    if (!loginId || !password) {
+      return res.status(400).json({ message: 'Email/phone and password are required' });
+    }
 
-    if (!user) {
-      return res.status(401).json({
-        message: 'Invalid phoneNumber',
+    let user = null;
+    if (loginId.includes('@')) {
+      user = await User.findOne({ email: loginId.toLowerCase() });
+    } else {
+      user = await User.findOne({
+        $or: [
+          { phoneNumber: loginId },
+          { phoneNumber: { $in: phoneNumberVariants(loginId) } },
+          { email: loginId.toLowerCase() },
+        ],
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    if (!user) {
+      return res.status(401).json({
+        message: 'Invalid credentials. Account not found.',
+      });
+    }
+
+    if (!user.password) {
+      return res.status(401).json({
+        message: 'This account was created with social login. Please sign in with Google or Facebook.',
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(401).json({
@@ -263,9 +291,9 @@ const loginUser = async (req, res) => {
     res.json({
       _id: user._id,
       name: user.name,
-      phoneNumber: user.phoneNumber,
-      email: user.email,
-      profileImage: user.profileImage,
+      phoneNumber: user.phoneNumber || '',
+      email: user.email || '',
+      profileImage: user.profileImage || null,
       token,
     });
 
@@ -273,6 +301,60 @@ const loginUser = async (req, res) => {
     res.status(500).json({
       message: error.message,
     });
+  }
+};
+
+// Get User Profile
+const getUserProfile = async (req, res) => {
+  try {
+    const userId = req.userId || req.usageUserKey;
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({
+      _id: user._id,
+      name: user.name,
+      phoneNumber: user.phoneNumber || '',
+      email: user.email || '',
+      profileImage: user.profileImage || null,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Update Profile Photo Only
+const updateProfilePhoto = async (req, res) => {
+  try {
+    const { profileImage } = req.body;
+    if (!profileImage) {
+      return res.status(400).json({ message: 'Profile image is required.' });
+    }
+
+    const userId = req.userId || req.usageUserKey;
+    const imageUrl = await saveProfileImage(profileImage, req);
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { profileImage: imageUrl },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    res.json({
+      success: true,
+      _id: user._id,
+      name: user.name,
+      phoneNumber: user.phoneNumber || '',
+      email: user.email || '',
+      profileImage: user.profileImage,
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message });
   }
 };
 
@@ -640,6 +722,8 @@ module.exports = {
   registerUser,
   loginUser,
   requestPasswordReset,
+  getUserProfile,
+  updateProfilePhoto,
   updateProfile,
   changePassword,
   requestPasswordResetOtp,

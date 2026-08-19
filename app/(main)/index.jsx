@@ -1,10 +1,12 @@
 import {
-  StyleSheet, Text, View, TouchableOpacity, Image, Dimensions,
-  SafeAreaView, ScrollView, Modal, TextInput, Pressable,
+  StyleSheet, Text, View, TouchableOpacity, Image, Dimensions, useWindowDimensions,
+  SafeAreaView, ScrollView, Modal, TextInput, Pressable, StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUsage } from '../Usage/UsageContext';
 import { 
   getForecast, 
@@ -56,26 +58,29 @@ const PAGES_DATA = [
 ];
 
 export default function Calculate() {
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const topInset = Math.max(insets.top, StatusBar.currentHeight || 0);
+  const topPadding = topInset > 0 ? topInset + 8 : 24;
+  const pageContentWidth = screenWidth - 32;
+  const cardWidth = (pageContentWidth - 10) / 2;
+  const cardHeight = Math.max(90, Math.min(102, Math.round(screenHeight * 0.12)));
   const router = useRouter();
   const {
     devices, monthlyBudget, dailyRecords,
     getUsage, saveDailyRecord, setMonthlyBudget,
+    // ── Usage Record & Calculation Metrics ──
+    monthlyEstimate, timeline, latestRecord,
+    recordsLoading, estimateLoading, isCalculating, recordSaveError,
+    currentUnits, currentCost, estimatedUnits, estimatedCost,
+    recommendationText, budgetStatus,
+    calculateBill, saveUsageRecord,
   } = useUsage();
   const { t } = useLanguage();
 
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
   const [usageModalVisible, setUsageModalVisible] = useState(false);
-
-  const [currentUnits, setCurrentUnits] = useState(0);
-  const [currentCost, setCurrentCost] = useState(0);
-  const [estimatedUnits, setEstimatedUnits] = useState(0);
-  const [estimatedCost, setEstimatedCost] = useState(0);
-
-  const [recommendationText, setRecommendationText] = useState('');
-  const [budgetStatus, setBudgetStatus] = useState({
-    isOverBudget: false, overBudgetAmount: 0, alertMessage: '', alertType: 'success'
-  });
 
   const handleOpenUsageModal = () => setUsageModalVisible(true);
   const handleCloseUsageModal = () => setUsageModalVisible(false);
@@ -84,33 +89,27 @@ export default function Calculate() {
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(monthlyBudget));
 
-  // ✅ FIX: pass getUsage instead of devices
-  const runForecast = useCallback((shouldSaveToday = false) => {
-    const forecast = getForecast(getUsage, dailyRecords, monthlyBudget);
+  // ── Usage Record: Save handler ─────────────────────────────────────────
+  const [saveRecordSuccess, setSaveRecordSuccess] = useState(false);
 
-    setCurrentUnits(forecast.currentDailyUnits);
-    setCurrentCost(forecast.currentDailyCost);
-    setEstimatedUnits(forecast.estimatedUnits);
-    setEstimatedCost(forecast.estimatedCost);
-
-    setBudgetStatus({
-      isOverBudget: forecast.isOverBudget,
-      overBudgetAmount: forecast.overBudgetAmount,
-      alertMessage: forecast.isOverBudget
-        ? `You are ${formatCost(forecast.overBudgetAmount)} MMK over your budget.`
-        : 'You are within the budget.',
-      alertType: forecast.isOverBudget ? 'warning' : 'success',
-    });
-
-    setRecommendationText(generateRecommendation(devices));
-
-    if (shouldSaveToday) {
-      saveDailyRecord(forecast.currentDailyUnits, forecast.currentDailyCost);
+  const handleSaveUsageRecord = useCallback(async () => {
+    setSaveRecordSuccess(false);
+    try {
+      await saveUsageRecord(); // effectiveDate defaults to today
+      setSaveRecordSuccess(true);
+      // Auto-dismiss success indicator after 3 seconds
+      setTimeout(() => setSaveRecordSuccess(false), 3000);
+    } catch (err) {
+      // recordSaveError is already set in context
     }
-  }, [getUsage, dailyRecords, monthlyBudget, devices, saveDailyRecord]);
+  }, [saveUsageRecord]);
 
-  const handleCalculatePress = () => {
-    runForecast(false);
+  const handleCalculatePress = async () => {
+    try {
+      await calculateBill();
+    } catch (e) {
+      console.warn('Calculate press error', e);
+    }
     setResultModalVisible(true);
   };
 
@@ -127,12 +126,12 @@ export default function Calculate() {
 
   const handleDotPress = (pageIndex) => {
     setActivePage(pageIndex);
-    scrollViewRef.current?.scrollTo({ x: pageIndex * (SCREEN_WIDTH - 40), animated: true });
+    scrollViewRef.current?.scrollTo({ x: pageIndex * pageContentWidth, animated: true });
   };
 
   const handleScroll = (event) => {
     const x = event.nativeEvent.contentOffset.x;
-    const idx = Math.round(x / (SCREEN_WIDTH - 40));
+    const idx = Math.round(x / pageContentWidth);
     if (idx !== activePage && idx >= 0 && idx < PAGES_DATA.length) setActivePage(idx);
   };
 
@@ -172,8 +171,12 @@ export default function Calculate() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={styles.container}>
-      <View style={styles.mainContent}>
+    <SafeAreaView edges={['left', 'right']} style={styles.container}>
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: topPadding }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.mainTitle}>{t('estimatedMonthlyBill')}</Text>
 
         <TouchableOpacity activeOpacity={0.9} onPress={handleOpenUsageModal}>
@@ -205,15 +208,26 @@ export default function Calculate() {
               <Text style={styles.rowValue}>{formatUnits(currentUnits)} {t('units')}</Text>
               <Text style={styles.rowValue}>{formatCost(currentCost)} MMK</Text>
             </View>
-            <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
+            <View style={[styles.tableRow, { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
-              <Text style={styles.rowValue}>{formatUnits(estimatedUnits)} {t('units')}</Text>
-              <Text style={styles.rowValue}>{formatCost(estimatedCost)} MMK</Text>
+              <Text style={styles.rowValue}>
+                {formatUnits(estimatedUnits)} {t('units')}
+              </Text>
+              <Text style={styles.rowValue}>
+                {formatCost(estimatedCost)} MMK
+              </Text>
             </View>
+
+            {/* ── Partial month notice ── */}
+            {monthlyEstimate?.isPartialMonth && monthlyEstimate?.hasData && (
+              <Text style={styles.partialMonthNote}>
+                ℹ️ Estimate covers {monthlyEstimate.coveredDays} of {monthlyEstimate.totalMonthDays} days
+              </Text>
+            )}
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity  onPress={() => router.push({ pathname: '../Recommendations/Recommendations' })}>
+        <TouchableOpacity onPress={() => router.push({ pathname: '../Recommendations/Recommendations' })}>
           <View style={styles.recommendationBanner}>
             <Text style={styles.recommendationText} numberOfLines={1}>
               <Text style={styles.recommendationBold}>Recommendations &gt;&gt; </Text>
@@ -240,15 +254,14 @@ export default function Calculate() {
             showsHorizontalScrollIndicator={false}
             onScroll={handleScroll}
             scrollEventThrottle={16}
-            contentContainerStyle={{ flexGrow: 1 }}
           >
             {PAGES_DATA.map((pageItems, pageIndex) => (
-              <View key={pageIndex} style={styles.pageContainer}>
+              <View key={pageIndex} style={{ width: pageContentWidth }}>
                 <View style={styles.gridContainer}>
                   {pageItems.map((item) => (
                     <TouchableOpacity
                       key={item.id}
-                      style={styles.applianceCard}
+                      style={[styles.applianceCard, { width: cardWidth, minHeight: cardHeight }]}
                       onPress={() => handleCardPress(item)}
                     >
                       <View>
@@ -267,14 +280,27 @@ export default function Calculate() {
 
         <View style={styles.paginationContainer}>
           {PAGES_DATA.map((_, index) => (
-            <View key={index} style={[styles.dot, activePage === index ? styles.activeDot : styles.inactiveDot]} />
+            <TouchableOpacity key={index} onPress={() => handleDotPress(index)}>
+              <View style={[styles.dot, activePage === index ? styles.activeDot : styles.inactiveDot]} />
+            </TouchableOpacity>
           ))}
         </View>
 
-        <TouchableOpacity style={styles.calculateButton} onPress={handleCalculatePress}>
-          <Text style={styles.buttonText}>{t('calculateBill')}</Text>
-        </TouchableOpacity>
-      </View>
+        {/* ── Primary Action: Calculate Bill ── */}
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={[styles.calculateButton, isCalculating && { opacity: 0.75 }]}
+            onPress={handleCalculatePress}
+            activeOpacity={0.85}
+            disabled={isCalculating}
+          >
+            <Ionicons name="calculator-outline" size={19} color="#FFF" style={{ marginRight: 8 }} />
+            <Text style={styles.buttonText}>
+              {isCalculating ? 'Calculating...' : t('calculateBill')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       <Modal animationType="fade" transparent visible={resultModalVisible}>
         <View style={styles.resultModalOverlay}>
@@ -341,21 +367,23 @@ export default function Calculate() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  mainContent: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
-  mainTitle: { fontSize: 20, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 9 },
+  scrollContainer: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 130 },
+  mainContent: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
+  mainTitle: { fontSize: 18, fontWeight: 'bold', color: '#0D2A4A', marginBottom: 6 },
   billCard: {
     backgroundColor: '#2167E1',
     borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
+    padding: 10,
+    marginBottom: 6,
     overflow: 'hidden',
   },
   budgetRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-    paddingBottom: 10,
+    marginBottom: 6,
+    paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.15)',
   },
@@ -403,29 +431,29 @@ const styles = StyleSheet.create({
   recommendationBanner: {
     backgroundColor: '#0D2A4A',
     borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginBottom: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    marginBottom: 6,
     width: '100%',
   },
-  recommendationText: { color: '#FFF', fontSize: 12 },
+  recommendationText: { color: '#FFF', fontSize: 11 },
   recommendationBold: { fontWeight: 'bold', color: '#FFF' },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
-  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#0D2A4A' },
+  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#0D2A4A' },
   myDevicesButton: {
     backgroundColor: '#2167E1',
     borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  myDevicesText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+  myDevicesText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   swiperWrapper: { width: '100%' },
-  pageContainer: { width: SCREEN_WIDTH - 40 },
+  pageContainer: { width: SCREEN_WIDTH - 32 },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -435,40 +463,83 @@ const styles = StyleSheet.create({
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
     backgroundColor: '#3B7AEE',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 7,
+    borderRadius: 14,
+    padding: 8,
+    marginBottom: 6,
   },
   iconCircle: {
-    width: 36,
-    height: 36,
+    width: 30,
+    height: 30,
     backgroundColor: '#FFF',
-    borderRadius: 18,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  cardTitle: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  cardTitle: { fontSize: 12, fontWeight: '600', color: '#FFF' },
   underline: {
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
-    marginVertical: 4,
+    marginVertical: 2,
   },
   paginationContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   dot: { height: 4, borderRadius: 3, marginHorizontal: 4 },
   activeDot: { width: 24, backgroundColor: '#A2B9E3' },
   inactiveDot: { width: 10, backgroundColor: '#D4E0F7' },
+  actionContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 16,
+    gap: 8,
+  },
   calculateButton: {
     backgroundColor: '#1958CE',
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 22,
+    height: 44,
+    width: '85%',
+    flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'center',
-    width: '55%',
+    justifyContent: 'center',
+    shadowColor: '#1958CE',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  saveUsageButton: {
+    backgroundColor: '#EEF4FF',
+    borderColor: '#C7D9FB',
+    borderWidth: 1.2,
+    borderRadius: 22,
+    height: 42,
+    width: '85%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveUsageButtonSuccess: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  saveUsageButtonText: {
+    color: '#1958CE',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  saveUsageButtonTextSuccess: {
+    color: '#059669',
+    fontWeight: '700',
+  },
+  saveRecordErrorText: {
+    color: '#DC2626',
+    fontSize: 12,
+    marginTop: 2,
+    textAlign: 'center',
   },
   specsContainer: { width: '100%', marginTop: 5 },
   specRow: {
@@ -490,7 +561,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 4,
   },
-  buttonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  buttonText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
   resultModalOverlay: {
     flex: 1,
     justifyContent: 'center',

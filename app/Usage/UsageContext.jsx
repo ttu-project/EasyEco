@@ -3,6 +3,13 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../config/api';
 import { getToken, getUser } from '../utils/authStorage';
+import {
+  generateFrontendTimeline,
+  calculateFrontendEstimate,
+  buildAppliancesSnapshot,
+  todayLocalString,
+} from '../utils/timelineUtils';
+import { calculateMeterBill, BILLING_CATEGORIES, parseWatt, parseTimeToHours, formatCost, generateRecommendation } from '../utils/billing';
 
 const UsageContext = createContext();
 
@@ -10,24 +17,47 @@ export function UsageProvider({ children }) {
   // ===== ORIGINAL API STATE =====
   const [usageData, setUsageData] = useState({});
 
-  // ===== NEW LOCAL STATE =====
+  // ===== LOCAL PERSISTED STATE =====
   const [monthlyBudget, setMonthlyBudget] = useState(100);
   const [dailyRecords, setDailyRecords] = useState([]);
   const [firstEntryDate, setFirstEntryDate] = useState(null);
   const [isReady, setIsReady] = useState(false);
 
+  // ===== USAGE RECORD & BILL CALCULATION STATE =====
+  const [usageRecords, setUsageRecords] = useState([]);
+  const [monthlyEstimate, setMonthlyEstimate] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+  const [latestRecord, setLatestRecord] = useState(null);
+
+  // Calculated Dashboard metrics
+  const [currentUnits, setCurrentUnits] = useState(0);
+  const [currentCost, setCurrentCost] = useState(0);
+  const [estimatedUnits, setEstimatedUnits] = useState(0);
+  const [estimatedCost, setEstimatedCost] = useState(0);
+  const [recommendationText, setRecommendationText] = useState('');
+  const [budgetStatus, setBudgetStatus] = useState({
+    isOverBudget: false,
+    overBudgetAmount: 0,
+    alertMessage: '',
+    alertType: 'success',
+  });
+
+  // Loading / error state
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [estimateLoading, setEstimateLoading] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [recordSaveError, setRecordSaveError] = useState(null);
+
   // ===== LOAD LOCAL DATA ON MOUNT =====
   useEffect(() => {
     const loadLocal = async () => {
       try {
-        const [b, f, r] = await Promise.all([
+        const [b, f] = await Promise.all([
           AsyncStorage.getItem('monthlyBudget'),
           AsyncStorage.getItem('firstEntryDate'),
-          AsyncStorage.getItem('dailyRecords'),
         ]);
         if (b) setMonthlyBudget(JSON.parse(b));
         if (f) setFirstEntryDate(f);
-        if (r) setDailyRecords(JSON.parse(r));
       } catch (e) {
         console.error('Local load error', e);
       } finally {
@@ -40,9 +70,18 @@ export function UsageProvider({ children }) {
   // ===== PERSIST LOCAL DATA =====
   useEffect(() => { AsyncStorage.setItem('monthlyBudget', JSON.stringify(monthlyBudget)); }, [monthlyBudget]);
   useEffect(() => { if (firstEntryDate) AsyncStorage.setItem('firstEntryDate', firstEntryDate); }, [firstEntryDate]);
-  useEffect(() => { AsyncStorage.setItem('dailyRecords', JSON.stringify(dailyRecords)); }, [dailyRecords]);
 
-  // ===== ORIGINAL FUNCTIONS (PRESERVED) =====
+  // ===== AUTH HEADER HELPER =====
+  const getAuthConfig = useCallback(async () => {
+    const [token, user] = await Promise.all([getToken(), getUser()]);
+    return {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(user?._id ? { 'X-User-Id': String(user._id) } : {}),
+      },
+    };
+  }, []);
+
   const groupUsageByCategory = (items) => {
     return items.reduce((grouped, item) => {
       const category = item.category;
@@ -56,25 +95,18 @@ export function UsageProvider({ children }) {
     }, {});
   };
 
-  const getAuthConfig = async () => {
-    const [token, user] = await Promise.all([getToken(), getUser()]);
-    return {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(user?._id ? { 'X-User-Id': String(user._id) } : {}),
-      },
-    };
-  };
-
+  // ===== FETCH ACTIVE USAGE =====
   const fetchUsage = useCallback(async () => {
     try {
       const config = await getAuthConfig();
       const response = await axios.get(`${API_BASE_URL}/usage`, config);
       setUsageData(groupUsageByCategory(response.data));
+      return response.data;
     } catch (error) {
       if (error.response?.status === 401) setUsageData({});
+      return [];
     }
-  }, []);
+  }, [getAuthConfig]);
 
   useEffect(() => {
     fetchUsage();
@@ -114,7 +146,7 @@ export function UsageProvider({ children }) {
         [category]: (prev[category] || []).filter((u) => u.id !== tempId),
       }));
     }
-  }, []);
+  }, [getAuthConfig]);
 
   const removeUsage = useCallback(async (category, itemId) => {
     const previousUsageData = usageData;
@@ -128,11 +160,17 @@ export function UsageProvider({ children }) {
     } catch (error) {
       setUsageData(previousUsageData);
     }
-  }, [usageData]);
+  }, [usageData, getAuthConfig]);
 
   const getUsage = useCallback((category) => usageData[category] || [], [usageData]);
-
-  const clearAllUsage = useCallback(() => setUsageData({}), []);
+  const clearAllUsage = useCallback(() => {
+    setUsageData({});
+    setCurrentUnits(0);
+    setCurrentCost(0);
+    setEstimatedUnits(0);
+    setEstimatedCost(0);
+    setMonthlyEstimate(null);
+  }, []);
 
   // ===== DERIVED: Flat devices array for My Devices =====
   const devices = useMemo(() => {
@@ -145,7 +183,6 @@ export function UsageProvider({ children }) {
     return all;
   }, [usageData]);
 
-  // ===== NEW HELPERS =====
   const getAllDevices = useCallback(() => devices, [devices]);
   const getDeviceById = useCallback((id) => devices.find((d) => d.id === id), [devices]);
 
@@ -169,7 +206,7 @@ export function UsageProvider({ children }) {
 
     try {
       const config = await getAuthConfig();
-      const current = usageData[category].find((i) => i.id === id);
+      const current = usageData[category]?.find((i) => i.id === id);
       await axios.put(
         `${API_BASE_URL}/usage/${id}`,
         {
@@ -183,7 +220,7 @@ export function UsageProvider({ children }) {
     } catch (err) {
       console.log('Update failed', err);
     }
-  }, [usageData]);
+  }, [usageData, getAuthConfig]);
 
   const deleteDevice = useCallback(async (id) => {
     for (const [category, items] of Object.entries(usageData)) {
@@ -204,8 +241,94 @@ export function UsageProvider({ children }) {
   }, []);
 
   /* ───────────────────────────────
-     FORECAST & DAILY USAGE HELPERS
+     LOCAL FORECAST HELPER (FALLBACK)
      ─────────────────────────────── */
+  const getForecast = useCallback(() => {
+    let applianceDailyUnits = 0;
+    BILLING_CATEGORIES.forEach((cat) => {
+      const specs = getUsage(cat) || [];
+      specs.forEach((spec) => {
+        applianceDailyUnits += (parseWatt(spec.watt) * parseTimeToHours(spec.time)) / 1000;
+      });
+    });
+
+    if (!applianceDailyUnits || applianceDailyUnits <= 0) {
+      return {
+        currentDailyUnits: 0,
+        currentDailyCost: 0,
+        currentUnits: 0,
+        currentCost: 0,
+        estimatedUnits: 0,
+        estimatedCost: 0,
+        isOverBudget: false,
+        overBudgetAmount: 0,
+        daysInMonth: 0,
+        currentDay: 0,
+      };
+    }
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const remainingDays = daysInMonth - currentDay;
+    const currentMonthStr = `${year}-${String(month).padStart(2, '0')}`;
+    const monthRecords = (dailyRecords || [])
+      .filter((r) => r.date && r.date.startsWith(currentMonthStr))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    let baselineDailyUnits = applianceDailyUnits;
+    if (monthRecords.length > 0) {
+      baselineDailyUnits = monthRecords[0].units;
+    }
+
+    let carryingUnits = baselineDailyUnits;
+    let recordIdx = 0;
+    let totalMonthUnits = 0;
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${currentMonthStr}-${String(d).padStart(2, '0')}`;
+
+      while (
+        recordIdx < monthRecords.length &&
+        monthRecords[recordIdx].date <= dateStr
+      ) {
+        carryingUnits = monthRecords[recordIdx].units;
+        recordIdx++;
+      }
+
+      let dayUnits = carryingUnits;
+      if (d === currentDay && applianceDailyUnits > 0) {
+        carryingUnits = applianceDailyUnits;
+        dayUnits = applianceDailyUnits;
+      }
+
+      totalMonthUnits += dayUnits;
+    }
+
+    totalMonthUnits = Math.round(totalMonthUnits * 10) / 10;
+    const estimatedCost = calculateMeterBill(totalMonthUnits);
+
+    const todayUnits = parseFloat(applianceDailyUnits.toFixed(1));
+    const todayCost = calculateMeterBill(todayUnits);
+
+    const isOverBudget = estimatedCost > monthlyBudget;
+    const overBudgetAmount = isOverBudget ? estimatedCost - monthlyBudget : 0;
+
+    return {
+      currentDailyUnits: todayUnits,
+      currentDailyCost: todayCost,
+      currentUnits: todayUnits,
+      currentCost: todayCost,
+      estimatedUnits: totalMonthUnits,
+      estimatedCost,
+      isOverBudget,
+      overBudgetAmount,
+      daysInMonth,
+      currentDay,
+    };
+  }, [dailyRecords, monthlyBudget, getUsage]);
 
   const getDailyUsage = useCallback((dateString) => {
     const exact = dailyRecords.find((r) => r.date === dateString);
@@ -220,78 +343,230 @@ export function UsageProvider({ children }) {
     return 0;
   }, [dailyRecords]);
 
-  const getForecast = useCallback(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const currentDay = today.getDate();
+  // ── Current month helper ──────────────────────────────────────────────────
+  const getCurrentMonthStr = useCallback(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
 
-    // Sum recorded (or fallback) units from day 1 up to today
-    let currentMonthUnits = 0;
-    for (let d = 1; d <= currentDay; d++) {
-      const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      currentMonthUnits += getDailyUsage(ds);
-    }
-
-    const avgDaily = currentDay > 0 ? currentMonthUnits / currentDay : 0;
-    const remainingDays = daysInMonth - currentDay;
-    const estimatedRemaining = avgDaily * remainingDays;
-    const estimatedUnits = Math.round(currentMonthUnits + estimatedRemaining);
-
-    // Myanmar-style tiered rates — adjust to match your real tariff
-    const calculateCost = (units) => {
-      let cost = 0;
-      let remaining = units;
-      const tiers = [
-        { limit: 30, rate: 35 },
-        { limit: 50, rate: 50 },
-        { limit: 75, rate: 70 },
-        { limit: 100, rate: 90 },
-        { limit: 150, rate: 110 },
-        { limit: 200, rate: 120 },
-        { limit: Infinity, rate: 125 },
-      ];
-      for (const t of tiers) {
-        if (remaining <= 0) break;
-        const u = Math.min(remaining, t.limit);
-        cost += u * t.rate;
-        remaining -= u;
+  // ── Fetch the latest saved record from server ─────────────────────────────
+  const fetchLatestRecord = useCallback(async () => {
+    try {
+      const config = await getAuthConfig();
+      const res = await axios.get(`${API_BASE_URL}/records/latest`, config);
+      if (res.data.hasData) {
+        setLatestRecord(res.data.record);
+      } else {
+        setLatestRecord(null);
       }
-      return Math.round(cost);
-    };
+    } catch (err) {
+      console.warn('[UsageContext] fetchLatestRecord failed', err?.message);
+    }
+  }, [getAuthConfig]);
 
-    const currentDailyCost = calculateCost(Math.round(currentMonthUnits));
-    const estimatedCost = calculateCost(estimatedUnits);
+  // ── Fetch monthly estimate from server ────────────────────────────────────
+  const fetchMonthlyEstimate = useCallback(async (monthStr) => {
+    const month = monthStr || getCurrentMonthStr();
+    setEstimateLoading(true);
+    try {
+      const config = await getAuthConfig();
+      const res = await axios.get(
+        `${API_BASE_URL}/records/estimate?month=${month}`,
+        config
+      );
+      setMonthlyEstimate(res.data);
+      return res.data;
+    } catch (err) {
+      console.warn('[UsageContext] fetchMonthlyEstimate failed', err?.message);
+      return null;
+    } finally {
+      setEstimateLoading(false);
+    }
+  }, [getCurrentMonthStr, getAuthConfig]);
 
-    const isOverBudget = estimatedCost > monthlyBudget;
-    const overBudgetAmount = isOverBudget ? estimatedCost - monthlyBudget : 0;
-    const avgRate = estimatedUnits > 0 ? estimatedCost / estimatedUnits : 0;
+  // ── Fetch daily timeline from server ──────────────────────────────────────
+  const fetchTimeline = useCallback(async (monthStr) => {
+    const month = monthStr || getCurrentMonthStr();
+    try {
+      const config = await getAuthConfig();
+      const res = await axios.get(
+        `${API_BASE_URL}/records/timeline?month=${month}`,
+        config
+      );
+      const rawTimeline = res.data.timeline || [];
+      setTimeline(rawTimeline);
+      const submitted = rawTimeline
+        .filter((entry) => entry.source === 'submitted')
+        .map((entry) => ({
+          date: entry.date,
+          units: entry.dailyKwh,
+        }));
+      setDailyRecords(submitted);
+      return res.data;
+    } catch (err) {
+      console.warn('[UsageContext] fetchTimeline failed', err?.message);
+      return null;
+    }
+  }, [getCurrentMonthStr, getAuthConfig]);
 
-    return {
-      currentDailyUnits: Math.round(currentMonthUnits),
-      currentDailyCost,
-      estimatedUnits,
-      estimatedCost,
-      isOverBudget,
-      overBudgetAmount,
-      avgRate,
-      daysInMonth,
-      currentDay,
-    };
-  }, [dailyRecords, monthlyBudget, getDailyUsage]);
+  // ── CALCULATE BILL (BACKEND INTEGRATION) ──────────────────────────────────
+  /**
+   * Calls POST /api/bill/calculate on Node.js + MongoDB backend.
+   * Immediately updates Dashboard state with real calculated numbers.
+   */
+  const calculateBill = useCallback(async () => {
+    setIsCalculating(true);
+    try {
+      const config = await getAuthConfig();
+      const response = await axios.post(
+        `${API_BASE_URL}/bill/calculate`,
+        {},
+        config
+      );
+
+      const data = response.data;
+      setCurrentUnits(data.currentUnits || 0);
+      setCurrentCost(data.currentCost || 0);
+      setEstimatedUnits(data.estimatedUnits || 0);
+      setEstimatedCost(data.estimatedCost || 0);
+      setMonthlyEstimate(data);
+
+      if (data.recommendation) {
+        setRecommendationText(data.recommendation);
+      } else {
+        setRecommendationText(generateRecommendation(devices));
+      }
+
+      const isOver = (data.estimatedCost || 0) > monthlyBudget;
+      const overAmount = isOver ? data.estimatedCost - monthlyBudget : 0;
+      setBudgetStatus({
+        isOverBudget: isOver,
+        overBudgetAmount: overAmount,
+        alertMessage: isOver
+          ? `You are ${formatCost(overAmount)} MMK over your budget.`
+          : 'You are within the budget.',
+        alertType: isOver ? 'warning' : 'success',
+      });
+
+      return data;
+    } catch (error) {
+      console.warn('[UsageContext] Backend calculateBill fallback to local calculation:', error.message);
+      const forecast = getForecast();
+      setCurrentUnits(forecast.currentUnits);
+      setCurrentCost(forecast.currentCost);
+      setEstimatedUnits(forecast.estimatedUnits);
+      setEstimatedCost(forecast.estimatedCost);
+      setRecommendationText(generateRecommendation(devices));
+      setBudgetStatus({
+        isOverBudget: forecast.isOverBudget,
+        overBudgetAmount: forecast.overBudgetAmount,
+        alertMessage: forecast.isOverBudget
+          ? `You are ${formatCost(forecast.overBudgetAmount)} MMK over your budget.`
+          : 'You are within the budget.',
+        alertType: forecast.isOverBudget ? 'warning' : 'success',
+      });
+      return forecast;
+    } finally {
+      setIsCalculating(false);
+    }
+  }, [getAuthConfig, monthlyBudget, devices, getForecast]);
+
+  // ── SAVE USAGE RECORD (IMMUTABLE SNAPSHOT TO MONGODB) ─────────────────────
+  const saveUsageRecord = useCallback(async (effectiveDate, notes = '') => {
+    setRecordSaveError(null);
+    setRecordsLoading(true);
+
+    const dateToUse = effectiveDate || todayLocalString();
+
+    const forecast = getForecast();
+    saveDailyRecord(forecast.currentDailyUnits, forecast.currentDailyCost);
+
+    const appliances = buildAppliancesSnapshot(usageData);
+
+    try {
+      const config = await getAuthConfig();
+      const res = await axios.post(
+        `${API_BASE_URL}/records`,
+        { effectiveDate: dateToUse, appliances, notes },
+        config
+      );
+
+      const savedRecord = res.data.record;
+
+      setUsageRecords((prev) => [...prev, savedRecord]);
+      setLatestRecord(savedRecord);
+      setFirstEntryDate((prev) => prev || dateToUse);
+
+      // Immediately trigger calculation to refresh Dashboard
+      await calculateBill();
+      await Promise.all([fetchMonthlyEstimate(), fetchTimeline(), fetchLatestRecord()]).catch(() => {});
+
+      return savedRecord;
+    } catch (err) {
+      if (err.response?.status === 404) {
+        console.warn('[UsageContext] Server returned 404 for /api/records. Saved locally.');
+        setRecordSaveError(null);
+        await calculateBill();
+        return { effectiveDate: dateToUse, isLocal: true };
+      }
+
+      const message = err.response?.data?.message || err.message || 'Failed to save record';
+      setRecordSaveError(message);
+      throw new Error(message);
+    } finally {
+      setRecordsLoading(false);
+    }
+  }, [usageData, getForecast, saveDailyRecord, getAuthConfig, calculateBill, fetchMonthlyEstimate, fetchTimeline, fetchLatestRecord]);
+
+  // ── Refresh all data on startup / resume ──────────────────────────────────
+  const refreshRecordData = useCallback(async () => {
+    await fetchUsage();
+    await calculateBill();
+    await Promise.all([
+      fetchMonthlyEstimate(),
+      fetchTimeline(),
+      fetchLatestRecord(),
+    ]).catch(() => {});
+  }, [fetchUsage, calculateBill, fetchMonthlyEstimate, fetchTimeline, fetchLatestRecord]);
+
+  useEffect(() => {
+    if (isReady) {
+      refreshRecordData().catch(() => {});
+    }
+  }, [isReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <UsageContext.Provider
       value={{
-        // Original
+        // Active appliances data
         usageData, addUsage, removeUsage, getUsage, fetchUsage, clearAllUsage,
-        // New
         devices, monthlyBudget, dailyRecords, firstEntryDate, isReady,
         getAllDevices, getDeviceById, addDevice, updateDevice, deleteDevice,
         setMonthlyBudget, saveDailyRecord,
-        // Forecast
-        getForecast, getDailyUsage,
+        // Calculation & Dashboard metrics
+        currentUnits,
+        currentCost,
+        estimatedUnits,
+        estimatedCost,
+        recommendationText,
+        budgetStatus,
+        isCalculating,
+        calculateBill,
+        getForecast,
+        getDailyUsage,
+        // Usage Record System
+        usageRecords,
+        monthlyEstimate,
+        timeline,
+        latestRecord,
+        recordsLoading,
+        estimateLoading,
+        recordSaveError,
+        saveUsageRecord,
+        fetchMonthlyEstimate,
+        fetchTimeline,
+        fetchLatestRecord,
+        refreshRecordData,
       }}
     >
       {children}

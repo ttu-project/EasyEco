@@ -9,6 +9,7 @@ import { generateDetailedRecommendations } from '../utils/billing';
 
 const ICON_MAP = {
   fridge: require('../../assets/Refigerator.png'),
+  refrigerator: require('../../assets/Refigerator.png'),
   ac: require('../../assets/Air_conditioner.png'),
   washing: require('../../assets/Washing_machine.png'),
   bulb: require('../../assets/Electric_bulb.png'),
@@ -37,8 +38,28 @@ export default function Recommendations() {
   const { isOverBudget, recommendations, targetSavings } =
     generateDetailedRecommendations(getUsage, dailyRecords, monthlyBudget);
 
-  const renderIcon = (type) => {
-    const src = ICON_MAP[type];
+  const resolveIcon = (type, name = '') => {
+    if (type && ICON_MAP[type]) return ICON_MAP[type];
+    const lowerType = String(type || '').toLowerCase();
+    if (ICON_MAP[lowerType]) return ICON_MAP[lowerType];
+    const lowerName = String(name || '').toLowerCase();
+    if (lowerName.includes('fridge') || lowerName.includes('refrigerator')) return ICON_MAP.refrigerator;
+    if (lowerName.includes('ac') || lowerName.includes('air conditioner') || lowerName.includes('cooler')) return ICON_MAP.ac;
+    if (lowerName.includes('wash')) return ICON_MAP.washing;
+    if (lowerName.includes('bulb') || lowerName.includes('light') || lowerName.includes('led')) return ICON_MAP.bulb;
+    if (lowerName.includes('fan')) return ICON_MAP.fan;
+    if (lowerName.includes('tv') || lowerName.includes('television')) return ICON_MAP.tv;
+    if (lowerName.includes('iron')) return ICON_MAP.iron;
+    if (lowerName.includes('microwave') || lowerName.includes('oven')) return ICON_MAP.microwave;
+    if (lowerName.includes('rice')) return ICON_MAP.rice;
+    if (lowerName.includes('pot')) return ICON_MAP.pot;
+    if (lowerName.includes('kettle')) return ICON_MAP.kettle;
+    if (lowerName.includes('vacuum')) return ICON_MAP.vacuum;
+    return null;
+  };
+
+  const renderIcon = (type, name) => {
+    const src = resolveIcon(type, name);
     if (src) return <Image source={src} style={styles.icon} />;
     return (
       <View style={styles.fallbackIcon}>
@@ -78,7 +99,7 @@ export default function Recommendations() {
         {recommendations.map((item) => (
           <View key={item.id} style={styles.card}>
             <View style={styles.cardTop}>
-              {renderIcon(item.iconType)}
+              {renderIcon(item.iconType || item.categoryId, item.name)}
               <Text style={styles.cardTitle}>{item.name}</Text>
             </View>
             <View style={styles.divider} />

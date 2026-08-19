@@ -25,7 +25,10 @@ export const parseTimeToHours = (timeStr = '') => {
 };
 
 export const calculateMeterBill = (totalUnits) => {
-  let remaining = Math.max(Number(totalUnits) || 0, 0);
+  const units = Number(totalUnits) || 0;
+  if (units <= 0) return 0;
+
+  let remaining = units;
   let totalCost = 0;
 
   for (const tier of RATES) {
@@ -35,7 +38,9 @@ export const calculateMeterBill = (totalUnits) => {
     remaining -= unitsInTier;
   }
 
-  return totalCost;
+  // Meter maintenance & service fee (40 MMK for <=15 daily units, 120 MMK for >15 monthly units)
+  const serviceFee = units <= 15 ? 40 : 120;
+  return Math.round(totalCost + serviceFee);
 };
 
 export const summarizeUsageBill = (getUsage) => {
@@ -111,45 +116,97 @@ export const formatCost = (cost) => {
 
 const getDaysInMonth = (year, month) => new Date(year, month, 0).getDate();
 
-export const getForecast = (getUsage, dailyRecords, monthlyBudget) => {
-  const now = new Date();
-  const today = now.getDate();
-  const totalDays = getDaysInMonth(now.getFullYear(), now.getMonth() + 1);
-  const daysRemaining = totalDays - today;
-
+export const getForecast = (getUsage, dailyRecords = [], monthlyBudget = 0) => {
   const bill = summarizeUsageBill(getUsage);
   const currentDailyUnits = bill.totalDailyUnits;
-  const currentDailyCost = bill.totalDailyCost;
 
-  let actualUnits = 0;
-  let actualCost = 0;
-  dailyRecords.forEach((r) => {
-    actualUnits += r.units || 0;
-    actualCost += r.cost || 0;
-  });
+  // If all devices are deleted (0 active devices), reset all estimations to 0
+  if (!currentDailyUnits || currentDailyUnits <= 0) {
+    return {
+      currentDailyUnits: 0,
+      currentDailyCost: 0,
+      currentUnits: 0,
+      currentCost: 0,
+      actualUnits: 0,
+      actualCost: 0,
+      projectedUnits: 0,
+      projectedCost: 0,
+      estimatedUnits: 0,
+      estimatedCost: 0,
+      daysRemaining: 0,
+      totalDays: 0,
+      today: 0,
+      isOverBudget: false,
+      overBudgetAmount: 0,
+      daysWithData: 0,
+    };
+  }
 
-  const projectedUnits = currentDailyUnits * daysRemaining;
-  const projectedCost = currentDailyCost * daysRemaining;
+  const now = new Date();
+  const today = now.getDate();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const totalDays = getDaysInMonth(year, month);
+  const daysRemaining = totalDays - today;
+  const currentMonthStr = `${year}-${String(month).padStart(2, '0')}`;
+  const todayStr = `${currentMonthStr}-${String(today).padStart(2, '0')}`;
 
-  const estimatedUnits = actualUnits + projectedUnits;
-  const estimatedCost = actualCost + projectedCost;
+  // Map of submitted daily records for the current month
+  const monthRecords = (dailyRecords || [])
+    .filter((r) => r.date && r.date.startsWith(currentMonthStr))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  let baselineDailyUnits = currentDailyUnits;
+  if (monthRecords.length > 0) {
+    baselineDailyUnits = monthRecords[0].units;
+  }
+
+  let carryingUnits = baselineDailyUnits;
+  let recordIdx = 0;
+  let totalMonthUnits = 0;
+
+  for (let d = 1; d <= totalDays; d++) {
+    const dateStr = `${currentMonthStr}-${String(d).padStart(2, '0')}`;
+
+    while (
+      recordIdx < monthRecords.length &&
+      monthRecords[recordIdx].date <= dateStr
+    ) {
+      carryingUnits = monthRecords[recordIdx].units;
+      recordIdx++;
+    }
+
+    let dayUnits = carryingUnits;
+    if (d === today && currentDailyUnits > 0) {
+      carryingUnits = currentDailyUnits;
+      dayUnits = currentDailyUnits;
+    }
+
+    totalMonthUnits += dayUnits;
+  }
+
+  totalMonthUnits = Math.round(totalMonthUnits * 10) / 10;
+  const estimatedCost = calculateMeterBill(totalMonthUnits);
+
+  const todayUnits = currentDailyUnits;
+  const todayCost = bill.totalDailyCost;
   const overBudget = estimatedCost - monthlyBudget;
 
   return {
     currentDailyUnits,
-    currentDailyCost,
-    actualUnits,
-    actualCost,
-    projectedUnits,
-    projectedCost,
-    estimatedUnits,
+    currentDailyCost: bill.totalDailyCost,
+    currentUnits: todayUnits,
+    currentCost: todayCost,
+    actualUnits: todayUnits,
+    actualCost: todayCost,
+    estimatedUnits: totalMonthUnits,
     estimatedCost,
     daysRemaining,
     totalDays,
     today,
     isOverBudget: overBudget > 0,
     overBudgetAmount: Math.max(0, overBudget),
-    daysWithData: dailyRecords.length,
+    daysWithData: monthRecords.length,
   };
 };
 

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal
 } from 'react-native';
-import { AntDesign } from '@expo/vector-icons';
+import { AntDesign, Ionicons } from '@expo/vector-icons';
 import { useUsage } from './Usage/UsageContext';
 import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
 import { useLanguage } from './context/LanguageContext';
@@ -16,8 +16,9 @@ export default function UsageDetail({
   estimatedUnits,
   estimatedCost,
 }) {
-  const { getUsage } = useUsage();
+  const { getUsage, saveUsageRecord, recordsLoading, recordSaveError } = useUsage();
   const { t } = useLanguage();
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const isCurrent = type === 'current';
 
@@ -29,6 +30,17 @@ export default function UsageDetail({
     units: isCurrent ? item.dailyUnits : item.monthlyUnits,
     cost: isCurrent ? item.dailyCost : item.monthlyCost,
   }));
+
+  const handleSaveHistory = async () => {
+    setSaveSuccess(false);
+    try {
+      await saveUsageRecord();
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.warn('Save history error:', err);
+    }
+  };
 
   return (
     <Modal
@@ -77,6 +89,41 @@ export default function UsageDetail({
             <Text style={styles.summaryUnits}>{formatUnits(estimatedUnits)} {t('units')}</Text>
             <Text style={styles.summaryCost}>{formatCost(estimatedCost)} MMK</Text>
           </View>
+
+          {/* ── Save to History Action Button ── */}
+          <TouchableOpacity
+            style={[
+              styles.saveHistoryButton,
+              recordsLoading && { opacity: 0.7 },
+              saveSuccess && styles.saveHistoryButtonSuccess,
+            ]}
+            onPress={handleSaveHistory}
+            disabled={recordsLoading}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name={saveSuccess ? 'checkmark-circle' : 'cloud-upload-outline'}
+              size={18}
+              color={saveSuccess ? '#059669' : '#FFF'}
+              style={{ marginRight: 8 }}
+            />
+            <Text
+              style={[
+                styles.saveHistoryButtonText,
+                saveSuccess && styles.saveHistoryButtonTextSuccess,
+              ]}
+            >
+              {recordsLoading
+                ? 'Saving to History...'
+                : saveSuccess
+                ? 'Saved to History!'
+                : t('saveToHistory')}
+            </Text>
+          </TouchableOpacity>
+
+          {recordSaveError ? (
+            <Text style={styles.errorText}>{recordSaveError}</Text>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -96,7 +143,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 20,
-    maxHeight: '85%',
+    maxHeight: '88%',
     elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 5 },
@@ -112,10 +159,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   title: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginVertical: 15,
+    marginVertical: 12,
     color: '#000',
   },
   tableRow: {
@@ -148,30 +195,65 @@ const styles = StyleSheet.create({
     marginVertical: 5,
   },
   scrollArea: {
-    maxHeight: 300,
+    maxHeight: 260,
   },
   summaryRow: {
     flexDirection: 'row',
-    paddingVertical: 8,
+    paddingVertical: 6,
     alignItems: 'center',
   },
   summaryLabel: {
     flex: 1.5,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#000',
   },
   summaryUnits: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
     color: '#333',
   },
   summaryCost: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'right',
     color: '#333',
     fontWeight: '600',
+  },
+  saveHistoryButton: {
+    backgroundColor: '#1658C3',
+    borderRadius: 14,
+    height: 44,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    shadowColor: '#1658C3',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  saveHistoryButtonSuccess: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1.5,
+  },
+  saveHistoryButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  saveHistoryButtonTextSuccess: {
+    color: '#059669',
+    fontWeight: '700',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 12,
+    marginTop: 6,
+    textAlign: 'center',
   },
 });

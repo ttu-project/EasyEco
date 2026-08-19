@@ -12,7 +12,7 @@ const passwordResetSessionSchema = new mongoose.Schema(
     verifiedAt: { type: Date, default: null },
     resetTokenId: { type: String, default: null },
     usedAt: { type: Date, default: null },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
   },
   { timestamps: true }
 );
